@@ -5,6 +5,9 @@ import { Room, RoomEvent, Track, LocalVideoTrack } from "livekit-client";
 import { decodeRTMessage, encodeRTMessage, type RTMessage, type RTStreamStatus } from "@/lib/realtime";
 
 const isDev = typeof process !== "undefined" && process.env.NODE_ENV !== "production";
+const PUBLISH_CONFIRM_TIMEOUT_MS = 3000;
+
+type StreamUiState = "idle" | "connecting" | "live" | "error";
 
 type Props = {
   isStreamer: boolean;
@@ -30,16 +33,18 @@ export default function HUDVideo({
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const roomRef = useRef<Room | null>(null);
-  const [isLive, setIsLive] = useState(false);
+  const [streamUiState, setStreamUiState] = useState<StreamUiState>("idle");
+  const [streamError, setStreamError] = useState<string | null>(null);
   const [streamerControls, setStreamerControls] = useState(false);
-  const [videoError, setVideoError] = useState<string | null>(null);
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const telemetryIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isLiveRef = useRef(false);
-  isLiveRef.current = isLive;
+  isLiveRef.current = streamUiState === "live";
   const stopLiveRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const activeStreamerUserIdRef = useRef(activeStreamerUserId);
   activeStreamerUserIdRef.current = activeStreamerUserId;
+
+  const isLive = streamUiState === "live";
 
   function isTrackFromActiveStreamer(participant: { identity?: string; metadata?: string }): boolean {
     const want = activeStreamerUserIdRef.current;
@@ -50,6 +55,27 @@ export default function HUDVideo({
     } catch {
       return participant.identity === want;
     }
+  }
+
+  function hasLocalVideoPublished(roomInstance: Room): boolean {
+    const pubs = Array.from(roomInstance.localParticipant.trackPublications.values());
+    const videoCount = pubs.filter((p) => p.track?.kind === Track.Kind.Video).length;
+    return videoCount > 0;
+  }
+
+  function logDiagnostics(roomInstance: Room, label: string) {
+    if (!isDev) return;
+    const local = roomInstance.localParticipant;
+    const videoPubs = Array.from(local.trackPublications.values()).filter((p) => p.track?.kind === Track.Kind.Video);
+    const remotes = Array.from(roomInstance.remoteParticipants.values()).map((p) => ({
+      identity: p.identity,
+      videoSubscribed: Array.from(p.trackPublications.values()).some((pub) => pub.track?.kind === Track.Kind.Video && pub.isSubscribed),
+    }));
+    console.log("[HUDVideo]", label, {
+      localIdentity: local.identity,
+      localVideoTrackPublications: videoPubs.length,
+      remoteParticipants: remotes,
+    });
   }
 
   useEffect(() => {
@@ -81,6 +107,7 @@ export default function HUDVideo({
       });
 
       await roomInstance.connect(data.url, data.token);
+      if (isDev) console.log("[HUDVideo] LiveKit connect success (viewer token), identity:", roomInstance.localParticipant.identity);
       roomInstance.localParticipant.setMetadata(JSON.stringify({ userId, displayName }));
 
       if (!cancelled) {
@@ -175,33 +202,52 @@ export default function HUDVideo({
 
   const goLive = async () => {
     const r = roomRef.current;
-    if (!r) return;
-    setVideoError(null);
+    if (!r || streamUiState === "connecting") return;
+    setStreamError(null);
+    setStreamUiState("connecting");
+    let newRoom: Room | null = null;
+    let videoTrack: LocalVideoTrack | null = null;
     try {
+      if (isDev) console.log("[HUDVideo] goLive: fetching streamer token (POST /api/livekit/token/streamer)");
       const res = await fetch("/api/livekit/token/streamer", { method: "POST" });
       const data = await res.json();
       if (!res.ok || !data.token) {
         const msg = data.error || "Cannot get streamer token. Are you the active streamer?";
-        setVideoError(msg);
-        alert(msg);
+        setStreamError(msg);
+        setStreamUiState("error");
         if (isDev) console.log("[HUDVideo] goLive: token failed", res.status, data);
         return;
       }
       if (isDev) console.log("[HUDVideo] goLive: got streamer token, disconnecting viewer room");
       await r.disconnect();
-      const newRoom = new Room();
+      newRoom = new Room();
       roomRef.current = newRoom;
       await newRoom.connect(data.url, data.token);
       newRoom.localParticipant.setMetadata(JSON.stringify({ userId, displayName }));
-      if (isDev) console.log("[HUDVideo] goLive: connected with streamer token");
+      if (isDev) console.log("[HUDVideo] goLive: LiveKit connect success, identity:", newRoom.localParticipant.identity);
 
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-      const videoTrack = new LocalVideoTrack(stream.getVideoTracks()[0]);
+      videoTrack = new LocalVideoTrack(stream.getVideoTracks()[0]);
       await newRoom.localParticipant.publishTrack(videoTrack, { simulcast: false });
-      if (isDev) {
-        const participants = newRoom.remoteParticipants.size + 1;
-        const tracks = Array.from(newRoom.localParticipant.trackPublications.values());
-        console.log("[HUDVideo] goLive: publishTrack success; participants:", participants, "local tracks:", tracks.length, tracks.map((t) => t.track?.kind));
+      if (isDev) console.log("[HUDVideo] goLive: publishTrack() returned (await completed)");
+
+      const deadline = Date.now() + PUBLISH_CONFIRM_TIMEOUT_MS;
+      let confirmed = hasLocalVideoPublished(newRoom);
+      while (!confirmed && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        confirmed = hasLocalVideoPublished(newRoom);
+      }
+      logDiagnostics(newRoom, "goLive after publish");
+
+      if (!confirmed) {
+        const msg = "Publish not confirmed (no local video track). Check camera permissions.";
+        setStreamError(msg);
+        setStreamUiState("error");
+        videoTrack?.stop();
+        await newRoom.disconnect();
+        roomRef.current = null;
+        if (isDev) console.error("[HUDVideo] goLive: publish confirmation timeout or no video track");
+        return;
       }
 
       await fetch("/api/stream/set-live", {
@@ -209,8 +255,8 @@ export default function HUDVideo({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isLive: true }),
       });
-      setIsLive(true);
-      if (videoRef.current) {
+      setStreamUiState("live");
+      if (videoRef.current && videoTrack) {
         videoTrack.attach(videoRef.current);
         videoRef.current.play().catch(() => {});
       }
@@ -223,10 +269,18 @@ export default function HUDVideo({
         ts: Date.now(),
       };
       newRoom.localParticipant.publishData(encodeRTMessage(statusMsg), { reliable: true }).catch(() => {});
+      if (isDev) console.log("[HUDVideo] goLive: LIVE – set-live true, local preview attached");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Go Live failed";
-      setVideoError(msg);
-      alert(msg);
+      setStreamError(msg);
+      setStreamUiState("error");
+      videoTrack?.stop();
+      if (newRoom) {
+        try {
+          await newRoom.disconnect();
+        } catch {}
+        roomRef.current = null;
+      }
       if (isDev) console.error("[HUDVideo] goLive error:", err);
     }
   };
@@ -234,7 +288,7 @@ export default function HUDVideo({
   const stopLive = async () => {
     const r = roomRef.current;
     if (!r) return;
-    setVideoError(null);
+    setStreamError(null);
     try {
       const statusMsg: RTStreamStatus = {
         type: "stream:status",
@@ -248,14 +302,15 @@ export default function HUDVideo({
         pub.track?.stop();
       });
       await r.disconnect();
+      roomRef.current = null;
       await fetch("/api/stream/set-live", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isLive: false }),
       });
-      setIsLive(false);
+      setStreamUiState("idle");
       if (videoRef.current) videoRef.current.srcObject = null;
-      if (isDev) console.log("[HUDVideo] stopLive: disconnected, fetching viewer token");
+      if (isDev) console.log("[HUDVideo] stopLive: disconnected, fetching viewer token (POST /api/livekit/token/viewer)");
       const res = await fetch("/api/livekit/token/viewer", { method: "POST" });
       const data = await res.json();
       if (!data.token) return;
@@ -267,11 +322,15 @@ export default function HUDVideo({
         track.attach(videoRef.current);
         videoRef.current.play().catch(() => {});
       });
+      newRoom.on(RoomEvent.TrackUnsubscribed, (track) => {
+        if (videoRef.current && track.kind === Track.Kind.Video) videoRef.current.srcObject = null;
+      });
       await newRoom.connect(data.url, data.token);
       newRoom.localParticipant.setMetadata(JSON.stringify({ userId, displayName }));
       onRoomReady(newRoom);
       if (isDev) console.log("[HUDVideo] stopLive: reconnected with viewer token");
     } catch (err) {
+      setStreamUiState("idle");
       if (isDev) console.error("[HUDVideo] stopLive error:", err);
     }
   };
@@ -286,14 +345,14 @@ export default function HUDVideo({
         muted
         className="w-full h-full object-cover"
       />
-      {videoError && (
+      {streamError && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 bg-red-600 text-white px-4 py-2 rounded text-sm max-w-md text-center">
-          {videoError}
+          {streamError}
         </div>
       )}
       {streamerControls && (
-        <div className="absolute bottom-20 left-1/2 -translate-x-1/2 flex gap-2 z-20">
-          {!isLive ? (
+        <div className="absolute bottom-20 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 z-20">
+          {streamUiState === "idle" && (
             <button
               type="button"
               onClick={goLive}
@@ -301,14 +360,31 @@ export default function HUDVideo({
             >
               Go Live
             </button>
-          ) : (
+          )}
+          {streamUiState === "connecting" && (
+            <button type="button" disabled className="px-4 py-2 bg-gray-500 text-white rounded cursor-not-allowed">
+              Starting…
+            </button>
+          )}
+          {streamUiState === "live" && (
             <button
               type="button"
               onClick={stopLive}
               className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
             >
-              Stop
+              LIVE • Stop
             </button>
+          )}
+          {streamUiState === "error" && (
+            <>
+              <button
+                type="button"
+                onClick={goLive}
+                className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+              >
+                Retry
+              </button>
+            </>
           )}
         </div>
       )}
