@@ -1,0 +1,52 @@
+{
+  "version": 3,
+  "middleware": {
+    "/": {
+      "files": [
+        "server/edge-runtime-webpack.js",
+        "server/src/middleware.js"
+      ],
+      "name": "src/middleware",
+      "page": "/",
+      "matchers": [
+        {
+          "regexp": "^(?:\\/(_next\\/data\\/[^/]{1,}))?\\/hud(\\.json)?[\\/#\\?]?$",
+          "originalSource": "/hud"
+        },
+        {
+          "regexp": "^(?:\\/(_next\\/data\\/[^/]{1,}))?\\/hud(?:\\/((?:[^\\/#\\?]+?)(?:\\/(?:[^\\/#\\?]+?))*))?(\\.json)?[\\/#\\?]?$",
+          "originalSource": "/hud/:path*"
+        },
+        {
+          "regexp": "^(?:\\/(_next\\/data\\/[^/]{1,}))?\\/admin(\\.json)?[\\/#\\?]?$",
+          "originalSource": "/admin"
+        },
+        {
+          "regexp": "^(?:\\/(_next\\/data\\/[^/]{1,}))?\\/admin(?:\\/((?:[^\\/#\\?]+?)(?:\\/(?:[^\\/#\\?]+?))*))?(\\.json)?[\\/#\\?]?$",
+          "originalSource": "/admin/:path*"
+        },
+        {
+          "regexp": "^(?:\\/(_next\\/data\\/[^/]{1,}))?\\/login(\\.json)?[\\/#\\?]?$",
+          "originalSource": "/login"
+        },
+        {
+          "regexp": "^(?:\\/(_next\\/data\\/[^/]{1,}))?\\/change-password(\\.json)?[\\/#\\?]?$",
+          "originalSource": "/change-password"
+        }
+      ],
+      "wasm": [],
+      "assets": [],
+      "env": {
+        "__NEXT_BUILD_ID": "osN4_-aicxuCU-bwju_d5",
+        "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY": "17XocPZ+Ipf0Bw081DAQTn/kmY9FGDSiNNweNKry4so=",
+        "__NEXT_PREVIEW_MODE_ID": "242b6877314941a1500072fe646829a2",
+        "__NEXT_PREVIEW_MODE_ENCRYPTION_KEY": "27957092039c1ff58d9abc8960dc4be4906a66c1b8d00dee2ca7ef1e66229c8a",
+        "__NEXT_PREVIEW_MODE_SIGNING_KEY": "5253c5c488612fb6d754b55108cba33f96befa5641df81f046a8b218b518242f"
+      }
+    }
+  },
+  "functions": {},
+  "sortedMiddleware": [
+    "/"
+  ]
+}

@@ -1,0 +1,142 @@
+# HUD WebApp MVP
+
+Production-grade MVP for a streamer/viewer HUD with admin user management, LiveKit streaming, real-time chat (via LiveKit data channels), and telemetry overlays. **Vercel-compatible** (no custom server; serverless-friendly).
+
+## Stack
+
+- **Next.js 15** (App Router) + TypeScript
+- **PostgreSQL** + Prisma (use Neon, Supabase, or any Postgres for Vercel)
+- **Cookie-based sessions** (httpOnly)
+- **RBAC** (admin / user; streamer is session state)
+- **LiveKit** for WebRTC SFU streaming and **data channels** (chat + stream control)
+- No Socket.IO; no custom Node server
+
+## Prerequisites
+
+- Node.js 18+
+- PostgreSQL (local or hosted, e.g. Neon/Supabase for Vercel)
+- **LiveKit** (hosted at [livekit.io](https://livekit.io) or self-hosted) — required for streaming and realtime features
+
+## Setup
+
+### 1. Install dependencies
+
+```bash
+cd hud-webapp
+npm install
+```
+
+### 2. Environment variables
+
+Copy `.env.example` to `.env` and set:
+
+```env
+DATABASE_URL="postgresql://USER:PASSWORD@localhost:5432/hud?schema=public"
+SESSION_SECRET="at-least-32-character-random-string"
+SEED_ADMIN_USERNAME=admin
+SEED_ADMIN_PASSWORD=admin123
+SEED_ADMIN_DISPLAY_NAME=Admin
+```
+
+For streaming and realtime (chat, stream request/handoff):
+
+- `LIVEKIT_URL` — LiveKit server URL (e.g. `wss://your-project.livekit.cloud`)
+- `LIVEKIT_API_KEY` — API key
+- `LIVEKIT_API_SECRET` — API secret
+
+If these are missing, the HUD shows “Streaming not configured” but auth and admin still work.
+
+Optional:
+
+- `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` — for map widget (client-side; if missing, placeholder is shown).
+
+### 3. Database
+
+```bash
+npm run prisma:migrate
+npm run prisma:seed
+```
+
+- **Migrate** applies the schema (including `stream_state` and pending-request columns).
+- **Seed** creates the admin user from `SEED_*` env vars (and sets `must_change_password=false` for that admin).
+
+### 4. Run
+
+**Development:**
+
+```bash
+npm run dev
+```
+
+**Production:**
+
+```bash
+npm run build
+npm run start
+```
+
+App is at **http://localhost:3000** (or `PORT` if set).
+
+## Vercel deployment
+
+- Deploy as a standard Next.js app. All APIs are Route Handlers; no custom server or WebSockets on the server.
+- **Database:** Use a hosted Postgres (e.g. [Neon](https://neon.tech), [Supabase](https://supabase.com)) and set `DATABASE_URL` in Vercel.
+- **LiveKit:** Must be hosted (e.g. [LiveKit Cloud](https://cloud.livekit.io)) or self-hosted elsewhere. Set `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` in Vercel.
+- Realtime (chat, stream request/handoff) uses **LiveKit data channels** in the same room as the video stream; no separate WebSocket server needed.
+
+## Scripts
+
+| Script                  | Description              |
+|-------------------------|--------------------------|
+| `npm run dev`           | Next.js dev server       |
+| `npm run build`         | Build Next.js            |
+| `npm run start`         | Next.js production      |
+| `npm run lint`          | ESLint                   |
+| `npm run prisma:generate` | Generate Prisma client |
+| `npm run prisma:migrate`  | Run migrations        |
+| `npm run prisma:seed`     | Seed admin user        |
+
+## Main flows
+
+1. **Admin** logs in with seed credentials → can create/edit/disable/delete users, reset passwords, view login history at `/admin` and `/admin/auth-events`.
+2. **User** logs in → if `must_change_password`, redirected to `/change-password`; then can use `/hud`.
+3. **HUD** (`/hud`): Everyone joins the LiveKit room with a **viewer** token (subscribe + publish data). If no active streamer, “Adopt Stream Identity” sets the user as streamer (REST + broadcast `stream:status` via LiveKit data). Viewers can “Request to Stream” (REST + broadcast `stream:request`); current streamer (or admin) Accept/Decline; accept triggers handoff (REST + `stream:handoff` / `stream:status`). **Lazy expiry:** if the streamer stops sending heartbeats for 10s, the next call to any stream API clears the streamer (no background timer).
+4. **Streamer** on HUD: “Go Live” gets a **streamer** token and reconnects to publish video; “Stop” unpublishes and reconnects as viewer. Telemetry (GPS + heading) is sent to the server; widgets (compass, map, local info) read from REST.
+5. **Chat** is global over LiveKit data (reliable); rate limit ~1 msg/s, burst 5 (client-side).
+
+## Routes
+
+- `/` — Home (links to Login / HUD)
+- `/login` — Login
+- `/change-password` — First-login password change
+- `/hud` — HUD (video + widgets + chat); auth required
+- `/admin` — User management; admin only
+- `/admin/auth-events` — Login history; admin only
+
+## API (summary)
+
+- **Auth:** `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`, `POST /api/auth/change-password`
+- **Admin:** `GET/POST /api/admin/users`, `PATCH/DELETE /api/admin/users/:id`, `POST /api/admin/users/:id/reset-password`, `GET /api/admin/auth-events`
+- **Stream:** `GET /api/stream/state`, `POST /api/stream/adopt`, `POST /api/stream/release`, `POST /api/stream/request`, `POST /api/stream/respond`, `POST /api/stream/heartbeat`, `POST /api/stream/set-live`
+- **LiveKit:** `POST /api/livekit/token/viewer`, `POST /api/livekit/token/streamer`
+- **Telemetry:** `POST /api/telemetry/update`, `GET /api/telemetry/latest`
+- **Widgets:** `GET /api/widgets/calendar`, `GET /api/widgets/reverse-geocode`, `GET /api/widgets/weather`
+
+Realtime is via **LiveKit data messages** in room `hud-room` (no Socket.IO).
+
+## Security
+
+- No self-signup; only admin can create users.
+- All admin and protected routes enforce server-side auth (and admin role where required).
+- Sessions are DB-backed; disabled users cannot log in; sessions revoked on disable/reset-password.
+- Last admin cannot be deleted.
+
+## Deliverables checklist
+
+- [x] `npm run dev` starts with Next only (no custom server)
+- [x] Login/logout and auth_events work
+- [x] Admin pages work
+- [x] `/hud` loads; connects to LiveKit when configured; shows “Streaming not configured” when env vars missing
+- [x] Chat over LiveKit data across clients
+- [x] Stream request to streamer; accept triggers handoff; old streamer stops
+- [x] Lazy expiry: after ~10s without heartbeats, next stream API call clears streamer
