@@ -1,11 +1,55 @@
 import { NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { prisma } from "@/lib/db";
+import { fetchCalendarEvents } from "@/lib/user-calendar";
 
-export async function GET() {
-  // Stub: mock next 3–5 events
-  const events = [
-    { id: "1", title: "Team standup", start: new Date(Date.now() + 3600000).toISOString(), end: new Date(Date.now() + 3700000).toISOString() },
-    { id: "2", title: "Review session", start: new Date(Date.now() + 86400000).toISOString(), end: new Date(Date.now() + 86640000).toISOString() },
-    { id: "3", title: "Demo", start: new Date(Date.now() + 172800000).toISOString(), end: new Date(Date.now() + 173160000).toISOString() },
-  ];
-  return NextResponse.json({ events });
+export async function GET(request: NextRequest) {
+  const state = await prisma.streamState.findUnique({
+    where: { id: 1 },
+    include: { activeStreamer: { select: { id: true, displayName: true } } },
+  });
+  const activeStreamerUserId = state?.activeStreamerUserId ?? null;
+  const activeStreamer = state?.activeStreamer ?? null;
+
+  if (!activeStreamerUserId || !activeStreamer) {
+    return NextResponse.json({
+      connected: false,
+      reason: "no_streamer",
+      sourceUserId: null,
+      sourceDisplayName: null,
+      events: [],
+    });
+  }
+
+  const integration = await prisma.userCalendarIntegration.findUnique({
+    where: { userId: activeStreamerUserId },
+  });
+  if (!integration?.refreshToken) {
+    return NextResponse.json({
+      connected: false,
+      reason: "streamer_not_connected",
+      sourceUserId: activeStreamerUserId,
+      sourceDisplayName: activeStreamer.displayName,
+      events: [],
+    });
+  }
+
+  try {
+    const events = await fetchCalendarEvents(request, integration);
+    return NextResponse.json({
+      connected: true,
+      reason: null,
+      sourceUserId: activeStreamerUserId,
+      sourceDisplayName: activeStreamer.displayName,
+      events,
+    });
+  } catch {
+    return NextResponse.json({
+      connected: false,
+      reason: "error",
+      sourceUserId: activeStreamerUserId,
+      sourceDisplayName: activeStreamer.displayName,
+      events: [],
+    });
+  }
 }

@@ -31,8 +31,8 @@ export default function LocalInfoWidget() {
     fetch("/api/widgets/reverse-geocode?lat=" + lat + "&lon=" + lon)
       .then((r) => r.json())
       .then((data) => {
-        const parts = [data.city, data.state, data.country].filter(Boolean);
-        setLocation(parts.join(", ") || null);
+        const parts = [data?.city, data?.state, data?.country].filter(Boolean);
+        setLocation(parts.length ? parts.join(", ") : null);
       })
       .catch(() => {});
     fetch("/api/widgets/weather?lat=" + lat + "&lon=" + lon)
@@ -46,7 +46,7 @@ export default function LocalInfoWidget() {
       <div className="font-mono">{new Date(time).toLocaleTimeString()}</div>
       {location && <div className="text-gray-300 truncate">{location}</div>}
       {temp && <div>{temp}</div>}
-      {!location && !temp && lat == null && <div className="text-gray-400">—</div>}
+      {!location && !temp && <div className="text-gray-400">Data Unavailable</div>}
     </div>
   );
 }

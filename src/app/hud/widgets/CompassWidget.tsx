@@ -27,7 +27,7 @@ export default function CompassWidget() {
   if (heading == null) {
     return (
       <div className="bg-black/60 text-white rounded-lg px-4 py-2 text-center text-sm">
-        Compass — no data
+        Data Unavailable
       </div>
     );
   }

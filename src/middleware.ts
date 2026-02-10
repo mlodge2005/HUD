@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 // Paths that require auth (and redirect to login if not authenticated)
-const authPaths = ["/hud", "/admin"];
+const authPaths = ["/hud", "/admin", "/settings"];
 const changePasswordPath = "/change-password";
 
 export async function middleware(request: NextRequest) {
@@ -35,5 +35,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/hud", "/hud/:path*", "/admin", "/admin/:path*", "/login", "/change-password"],
+  matcher: ["/hud", "/hud/:path*", "/admin", "/admin/:path*", "/settings", "/settings/:path*", "/login", "/change-password"],
 };

@@ -50,6 +50,15 @@ Optional:
 
 - `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` — for map widget (client-side; if missing, placeholder is shown).
 
+**Google Calendar (per-user, HUD widget):**
+
+- `GOOGLE_OAUTH_CLIENT_ID` — OAuth 2.0 client ID from Google Cloud Console.
+- `GOOGLE_OAUTH_CLIENT_SECRET` — OAuth 2.0 client secret.
+
+Redirect URI is computed from the request (origin + `/api/google/oauth/callback`), so no env var is needed. In Google Cloud Console, add **Authorized redirect URIs** for each environment, e.g. `http://localhost:3000/api/google/oauth/callback` and `https://<your-domain>/api/google/oauth/callback`.
+
+If set, any user can connect their own Google Calendar in **Settings**. The HUD calendar widget shows upcoming events for the **current active streamer** (from their connected calendar).
+
 ### 3. Database
 
 ```bash
@@ -111,12 +120,16 @@ App is at **http://localhost:3000** (or `PORT` if set).
 - `/change-password` — First-login password change
 - `/hud` — HUD (video + widgets + chat); auth required
 - `/admin` — User management; admin only
+- `/admin/calendar` — Link to Settings for calendar (per-user); admin only
 - `/admin/auth-events` — Login history; admin only
+- `/settings` — Per-user settings (Google Calendar connect/disconnect, calendar ID); auth required
 
 ## API (summary)
 
 - **Auth:** `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`, `POST /api/auth/change-password`
 - **Admin:** `GET/POST /api/admin/users`, `PATCH/DELETE /api/admin/users/:id`, `POST /api/admin/users/:id/reset-password`, `GET /api/admin/auth-events`
+- **Settings:** `GET/POST /api/settings/calendar`, `POST /api/settings/calendar/disconnect`, `GET /api/settings/calendar/test`
+- **Google OAuth:** `GET /api/google/oauth/start` (redirect to Google), `GET /api/google/oauth/callback` (exchange code, store tokens for current user)
 - **Stream:** `GET /api/stream/state`, `POST /api/stream/adopt`, `POST /api/stream/release`, `POST /api/stream/request`, `POST /api/stream/respond`, `POST /api/stream/heartbeat`, `POST /api/stream/set-live`
 - **LiveKit:** `POST /api/livekit/token/viewer`, `POST /api/livekit/token/streamer`
 - **Telemetry:** `POST /api/telemetry/update`, `GET /api/telemetry/latest`

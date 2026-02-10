@@ -7,10 +7,5 @@ export async function GET(request: NextRequest) {
   if (!lat || !lon) {
     return NextResponse.json({ error: "lat and lon required" }, { status: 400 });
   }
-  // Stub: return mock data (real integration when key present)
-  return NextResponse.json({
-    city: "Chicago",
-    state: "IL",
-    country: "USA",
-  });
+  return NextResponse.json({});
 }

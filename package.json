@@ -16,6 +16,7 @@
     "@livekit/components-react": "^2.7.0",
     "@prisma/client": "^6.0.0",
     "argon2": "^0.41.1",
+    "googleapis": "^171.4.0",
     "livekit-client": "^2.6.0",
     "livekit-server-sdk": "^2.6.0",
     "nanoid": "^5.0.9",

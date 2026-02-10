@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import type { Room } from "livekit-client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import HUDVideo from "./HUDVideo";
 import CompassWidget from "./widgets/CompassWidget";
 import CalendarWidget from "./widgets/CalendarWidget";
@@ -35,6 +36,7 @@ type StreamStatus = {
 const POLL_STATE_INTERVAL_MS = 5000;
 
 export default function HUDClient({ user }: { user: AuthUser }) {
+  const router = useRouter();
   const [streamStatus, setStreamStatus] = useState<StreamStatus>({
     activeStreamerUserId: null,
     isLive: false,
@@ -51,6 +53,7 @@ export default function HUDClient({ user }: { user: AuthUser }) {
     ts: number;
   } | null>(null);
   const [liveKitConfigured, setLiveKitConfigured] = useState<boolean | null>(null);
+  const [calendarRefreshKey, setCalendarRefreshKey] = useState(0);
 
   const isStreamer = streamStatus.activeStreamerUserId === user.id;
   const streamStatusRef = useRef(streamStatus);
@@ -117,6 +120,7 @@ export default function HUDClient({ user }: { user: AuthUser }) {
         isLive: false,
         startedAt: null,
       }));
+      setCalendarRefreshKey((k) => k + 1);
       const statusMsg: RTStreamStatus = {
         type: "stream:status",
         activeStreamerUserId: user.id,
@@ -241,7 +245,10 @@ export default function HUDClient({ user }: { user: AuthUser }) {
       )}
 
       <div className="absolute top-4 left-4 z-20 w-48">
-        <CalendarWidget />
+        <CalendarWidget
+          activeStreamerUserId={streamStatus.activeStreamerUserId}
+          refreshKey={calendarRefreshKey}
+        />
       </div>
       <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20">
         <CompassWidget />
@@ -256,7 +263,7 @@ export default function HUDClient({ user }: { user: AuthUser }) {
         <ChatWidget room={room} user={user} />
       </div>
 
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex gap-2">
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex gap-2 items-center">
         {streamStatus.activeStreamerUserId && !isStreamer && (
           <button
             type="button"
@@ -267,25 +274,39 @@ export default function HUDClient({ user }: { user: AuthUser }) {
             {requestLoading ? "Requesting…" : "Request to Stream"}
           </button>
         )}
-        {isStreamer && (
-          <>
-            <Link href="/admin" className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500">
-              Admin
-            </Link>
-            <button
-              type="button"
-              onClick={releaseStream}
-              className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
-            >
-              Release streamer
-            </button>
-          </>
+        {(isStreamer || user.role === "admin") && (
+          <Link href="/admin" className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500">
+            Admin
+          </Link>
         )}
+        {isStreamer && (
+          <button
+            type="button"
+            onClick={releaseStream}
+            className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+          >
+            Release streamer
+          </button>
+        )}
+        <Link href="/settings" className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500">
+          Settings
+        </Link>
+        <button
+          type="button"
+          onClick={async () => {
+            await fetch("/api/auth/logout", { method: "POST" });
+            router.push("/login?from=/hud");
+            router.refresh();
+          }}
+          className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500"
+        >
+          Log out
+        </button>
       </div>
 
       {requestModal && (isStreamer || user.role === "admin") && (
         <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-30">
-          <div className="bg-white rounded-lg p-6 max-w-sm w-full mx-4">
+          <div className="bg-white text-gray-900 rounded-lg p-6 max-w-sm w-full mx-4">
             <p className="font-medium mb-2">
               {requestModal.fromUsername} wants to become the streamer.
             </p>
@@ -293,7 +314,7 @@ export default function HUDClient({ user }: { user: AuthUser }) {
               <button
                 type="button"
                 onClick={() => respondToRequest(false, requestModal.fromUserId)}
-                className="flex-1 py-2 border rounded hover:bg-gray-100"
+                className="flex-1 py-2 border border-gray-300 rounded bg-gray-50 text-gray-900 hover:bg-gray-100"
               >
                 Decline
               </button>

@@ -125,19 +125,19 @@ export default function AdminUsers() {
   }
 
   return (
-    <div>
+    <div className="text-gray-900">
       <div className="flex flex-wrap gap-4 mb-4">
         <input
           type="text"
           placeholder="Search username"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="border rounded px-2 py-1"
+          className="border border-gray-300 rounded px-2 py-1 bg-white text-gray-900 placeholder:text-gray-500"
         />
         <select
           value={roleFilter}
           onChange={(e) => setRoleFilter(e.target.value)}
-          className="border rounded px-2 py-1"
+          className="border border-gray-300 rounded px-2 py-1 bg-white text-gray-900"
         >
           <option value="">All roles</option>
           <option value="admin">Admin</option>
@@ -146,7 +146,7 @@ export default function AdminUsers() {
         <select
           value={disabledFilter}
           onChange={(e) => setDisabledFilter(e.target.value)}
-          className="border rounded px-2 py-1"
+          className="border border-gray-300 rounded px-2 py-1 bg-white text-gray-900"
         >
           <option value="">All</option>
           <option value="true">Disabled</option>
@@ -165,12 +165,12 @@ export default function AdminUsers() {
       </div>
       {error && <p className="text-red-600 text-sm mb-2">{error}</p>}
       {loading ? (
-        <p>Loading…</p>
+        <p className="text-gray-900">Loading…</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full border-collapse border">
             <thead>
-              <tr className="bg-gray-100">
+              <tr className="bg-gray-100 text-gray-900">
                 <th className="border p-2 text-left">Username</th>
                 <th className="border p-2 text-left">Display name</th>
                 <th className="border p-2 text-left">Role</th>
@@ -180,7 +180,7 @@ export default function AdminUsers() {
             </thead>
             <tbody>
               {users.map((u) => (
-                <tr key={u.id} className="border">
+                <tr key={u.id} className="border text-gray-900">
                   <td className="border p-2">{u.username}</td>
                   <td className="border p-2">{u.displayName}</td>
                   <td className="border p-2">{u.role}</td>
@@ -238,7 +238,7 @@ export default function AdminUsers() {
 
       {modal === "create" && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+          <div className="bg-white text-gray-900 rounded-lg p-6 max-w-md w-full">
             <h2 className="text-lg font-bold mb-4">Create user</h2>
             <form onSubmit={handleCreate} className="space-y-3">
               <input
@@ -246,7 +246,7 @@ export default function AdminUsers() {
                 placeholder="Username"
                 value={form.username}
                 onChange={(e) => setForm({ ...form, username: e.target.value })}
-                className="w-full border rounded px-2 py-1"
+                className="w-full border border-gray-300 rounded px-2 py-1 bg-white text-gray-900 placeholder:text-gray-500"
                 required
               />
               <input
@@ -254,7 +254,7 @@ export default function AdminUsers() {
                 placeholder="Display name"
                 value={form.displayName}
                 onChange={(e) => setForm({ ...form, displayName: e.target.value })}
-                className="w-full border rounded px-2 py-1"
+                className="w-full border border-gray-300 rounded px-2 py-1 bg-white text-gray-900 placeholder:text-gray-500"
                 required
               />
               <input
@@ -262,20 +262,20 @@ export default function AdminUsers() {
                 placeholder="Temporary password"
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
-                className="w-full border rounded px-2 py-1"
+                className="w-full border border-gray-300 rounded px-2 py-1 bg-white text-gray-900 placeholder:text-gray-500"
                 required
                 minLength={8}
               />
               <select
                 value={form.role}
                 onChange={(e) => setForm({ ...form, role: e.target.value as "admin" | "user" })}
-                className="w-full border rounded px-2 py-1"
+                className="w-full border border-gray-300 rounded px-2 py-1 bg-white text-gray-900"
               >
                 <option value="user">User</option>
                 <option value="admin">Admin</option>
               </select>
               <div className="flex gap-2 justify-end">
-                <button type="button" onClick={() => setModal(null)} className="px-4 py-2 border rounded">
+                <button type="button" onClick={() => setModal(null)} className="px-4 py-2 border border-gray-300 rounded bg-gray-50 text-gray-900 hover:bg-gray-100">
                   Cancel
                 </button>
                 <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
@@ -289,7 +289,7 @@ export default function AdminUsers() {
 
       {modal === "edit" && selected && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+          <div className="bg-white text-gray-900 rounded-lg p-6 max-w-md w-full">
             <h2 className="text-lg font-bold mb-4">Edit {selected.username}</h2>
             <form onSubmit={handleUpdate} className="space-y-3">
               <input
@@ -297,13 +297,13 @@ export default function AdminUsers() {
                 placeholder="Display name"
                 value={form.displayName}
                 onChange={(e) => setForm({ ...form, displayName: e.target.value })}
-                className="w-full border rounded px-2 py-1"
+                className="w-full border border-gray-300 rounded px-2 py-1 bg-white text-gray-900 placeholder:text-gray-500"
                 required
               />
               <select
                 value={form.role}
                 onChange={(e) => setForm({ ...form, role: e.target.value as "admin" | "user" })}
-                className="w-full border rounded px-2 py-1"
+                className="w-full border border-gray-300 rounded px-2 py-1 bg-white text-gray-900"
               >
                 <option value="user">User</option>
                 <option value="admin">Admin</option>
@@ -317,7 +317,7 @@ export default function AdminUsers() {
                 Disabled (pause login)
               </label>
               <div className="flex gap-2 justify-end">
-                <button type="button" onClick={() => setModal(null)} className="px-4 py-2 border rounded">
+                <button type="button" onClick={() => setModal(null)} className="px-4 py-2 border border-gray-300 rounded bg-gray-50 text-gray-900 hover:bg-gray-100">
                   Cancel
                 </button>
                 <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
@@ -331,18 +331,18 @@ export default function AdminUsers() {
 
       {modal === "reset" && selected && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+          <div className="bg-white text-gray-900 rounded-lg p-6 max-w-md w-full">
             <h2 className="text-lg font-bold mb-4">Reset password for {selected.username}</h2>
             <input
               type="text"
               placeholder="New temporary password"
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
-              className="w-full border rounded px-2 py-1 mb-4"
+              className="w-full border border-gray-300 rounded px-2 py-1 mb-4 bg-white text-gray-900 placeholder:text-gray-500"
               minLength={8}
             />
             <div className="flex gap-2 justify-end">
-              <button type="button" onClick={() => setModal(null)} className="px-4 py-2 border rounded">
+              <button type="button" onClick={() => setModal(null)} className="px-4 py-2 border border-gray-300 rounded bg-gray-50 text-gray-900 hover:bg-gray-100">
                 Cancel
               </button>
               <button

@@ -7,9 +7,5 @@ export async function GET(request: NextRequest) {
   if (!lat || !lon) {
     return NextResponse.json({ error: "lat and lon required" }, { status: 400 });
   }
-  // Stub: return mock data
-  return NextResponse.json({
-    tempF: 72,
-    condition: "Partly cloudy",
-  });
+  return NextResponse.json({});
 }

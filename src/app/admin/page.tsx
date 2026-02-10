@@ -7,7 +7,7 @@ export default async function AdminPage() {
   if (!user || user.role !== "admin") redirect("/login");
 
   return (
-    <main className="p-4">
+    <main className="p-4 text-gray-900">
       <h1 className="text-2xl font-bold mb-4">User management</h1>
       <AdminUsers />
     </main>

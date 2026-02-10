@@ -1,30 +1,117 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
-type Event = { id: string; title: string; start: string; end: string };
+type CalendarEvent = {
+  id: string;
+  summary: string;
+  startIso: string;
+  endIso: string;
+  startDisplay: string;
+  endDisplay: string;
+  dateDisplay: string;
+};
 
-export default function CalendarWidget() {
-  const [events, setEvents] = useState<Event[]>([]);
+type CalendarData = {
+  events: CalendarEvent[];
+  connected: boolean;
+  reason: string | null;
+  sourceUserId: string | null;
+  sourceDisplayName: string | null;
+};
+
+const CALENDAR_POLL_MS = 15000;
+
+function fetchCalendar(): Promise<CalendarData> {
+  return fetch("/api/widgets/calendar")
+    .then((r) => r.json())
+    .then((d) => ({
+      events: Array.isArray(d.events) ? d.events : [],
+      connected: Boolean(d.connected),
+      reason: d.reason ?? null,
+      sourceUserId: d.sourceUserId ?? null,
+      sourceDisplayName: d.sourceDisplayName ?? null,
+    }))
+    .catch(() => ({
+      events: [],
+      connected: false,
+      reason: "error",
+      sourceUserId: null,
+      sourceDisplayName: null,
+    }));
+}
+
+type Props = {
+  /** When this changes (e.g. after adopt/handoff), widget refetches. */
+  activeStreamerUserId?: string | null;
+  /** Increment to force refetch (e.g. after adopt succeeds). */
+  refreshKey?: number;
+};
+
+export default function CalendarWidget({ activeStreamerUserId, refreshKey = 0 }: Props) {
+  const [data, setData] = useState<CalendarData | null>(null);
+
+  const refresh = useCallback(() => {
+    fetchCalendar().then(setData);
+  }, []);
 
   useEffect(() => {
-    fetch("/api/widgets/calendar")
-      .then((r) => r.json())
-      .then((data) => setEvents(data.events || []))
-      .catch(() => {});
-  }, []);
+    refresh();
+  }, [activeStreamerUserId, refreshKey, refresh]);
+
+  useEffect(() => {
+    const interval = setInterval(refresh, CALENDAR_POLL_MS);
+    return () => clearInterval(interval);
+  }, [refresh]);
+
+  if (data === null) {
+    return (
+      <div className="bg-black/60 text-white rounded-lg p-3 text-sm">
+        <div className="font-medium mb-2">Calendar</div>
+        <div className="text-gray-400">Loading…</div>
+      </div>
+    );
+  }
+
+  const title =
+    data.connected && data.sourceDisplayName
+      ? `Calendar: ${data.sourceDisplayName}`
+      : "Calendar";
+
+  let body: React.ReactNode;
+  if (data.reason === "no_streamer") {
+    body = <div className="text-gray-400">No active streamer</div>;
+  } else if (data.reason === "streamer_not_connected") {
+    body = (
+      <div className="text-gray-400">
+        {data.sourceDisplayName
+          ? `${data.sourceDisplayName} has not connected a calendar`
+          : "Streamer calendar not connected"}
+      </div>
+    );
+  } else if (data.reason === "error") {
+    body = <div className="text-gray-400">Unable to load calendar</div>;
+  } else if (data.events.length === 0) {
+    body = <div className="text-gray-400">Data Unavailable</div>;
+  } else {
+    body = data.events.slice(0, 5).map((e) => {
+      const timeLine =
+        e.startDisplay === "All day"
+          ? e.dateDisplay + " • All day"
+          : `${e.dateDisplay} • ${e.startDisplay}–${e.endDisplay}`;
+      return (
+        <div key={e.id} className="space-y-0.5">
+          <div className="truncate font-medium">{e.summary}</div>
+          <div className="text-gray-300 text-xs truncate">{timeLine}</div>
+        </div>
+      );
+    });
+  }
 
   return (
     <div className="bg-black/60 text-white rounded-lg p-3 text-sm">
-      <div className="font-medium mb-2">Calendar</div>
-      <ul className="space-y-1">
-        {events.slice(0, 5).map((e) => (
-          <li key={e.id} className="truncate">
-            {e.title} — {new Date(e.start).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-          </li>
-        ))}
-        {events.length === 0 && <li className="text-gray-400">No events</li>}
-      </ul>
+      <div className="font-medium mb-2">{title}</div>
+      <div className="space-y-2">{body}</div>
     </div>
   );
 }

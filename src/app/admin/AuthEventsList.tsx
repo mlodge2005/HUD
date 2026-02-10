@@ -45,14 +45,14 @@ export default function AuthEventsList() {
       .finally(() => setLoading(false));
   }
 
-  if (loading && events.length === 0) return <p>Loading…</p>;
+  if (loading && events.length === 0) return <p className="text-gray-900">Loading…</p>;
 
   return (
-    <div>
+    <div className="text-gray-900">
       <div className="overflow-x-auto">
         <table className="w-full border-collapse border">
           <thead>
-            <tr className="bg-gray-100">
+            <tr className="bg-gray-100 text-gray-900">
               <th className="border p-2 text-left">Time</th>
               <th className="border p-2 text-left">Event</th>
               <th className="border p-2 text-left">User</th>
@@ -62,7 +62,7 @@ export default function AuthEventsList() {
           </thead>
           <tbody>
             {events.map((e) => (
-              <tr key={e.id} className="border">
+              <tr key={e.id} className="border text-gray-900">
                 <td className="border p-2 text-sm">
                   {new Date(e.createdAt).toLocaleString()}
                 </td>
@@ -92,7 +92,7 @@ export default function AuthEventsList() {
           type="button"
           onClick={loadMore}
           disabled={loading}
-          className="mt-4 px-4 py-2 border rounded hover:bg-gray-100 disabled:opacity-50"
+          className="mt-4 px-4 py-2 border border-gray-300 rounded bg-white text-gray-900 hover:bg-gray-100 disabled:opacity-50"
         >
           Load more
         </button>

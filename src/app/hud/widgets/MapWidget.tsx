@@ -27,7 +27,7 @@ export default function MapWidget() {
   if (!HAS_GOOGLE_MAPS) {
     return (
       <div className="bg-black/60 text-white rounded-lg p-3 h-full flex items-center justify-center text-sm">
-        Map placeholder (set GOOGLE_MAPS_API_KEY)
+        Data Unavailable
       </div>
     );
   }
@@ -35,7 +35,7 @@ export default function MapWidget() {
   if (lat == null || lon == null) {
     return (
       <div className="bg-black/60 text-white rounded-lg p-3 h-full flex items-center justify-center text-sm">
-        Waiting for location…
+        Data Unavailable
       </div>
     );
   }

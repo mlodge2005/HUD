@@ -25,6 +25,9 @@ model User {
   chatMessages   ChatMessage[]
 
   streamStateAsActive StreamState? @relation("ActiveStreamer")
+  calendarIntegration UserCalendarIntegration?
+
+  @@map("users")
 }
 
 model Session {
@@ -36,6 +39,8 @@ model Session {
   lastSeenAt DateTime @default(now()) @map("last_seen_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
 }
 
 model StreamState {
@@ -50,6 +55,8 @@ model StreamState {
 
   activeStreamer User?  @relation("ActiveStreamer", fields: [activeStreamerUserId], references: [id], onDelete: SetNull)
   telemetryLatest TelemetryLatest?
+
+  @@map("stream_state")
 }
 
 model TelemetryLatest {
@@ -61,6 +68,8 @@ model TelemetryLatest {
   updatedAt     DateTime @updatedAt @map("updated_at")
 
   streamState StreamState @relation(fields: [streamStateId], references: [id], onDelete: Cascade)
+
+  @@map("telemetry_latest")
 }
 
 model AuditLog {
@@ -73,6 +82,8 @@ model AuditLog {
 
   actor  User  @relation("ActorUser", fields: [actorUserId], references: [id], onDelete: Cascade)
   target User? @relation("TargetUser", fields: [targetUserId], references: [id], onDelete: SetNull)
+
+  @@map("audit_log")
 }
 
 model AuthEvent {
@@ -85,6 +96,8 @@ model AuthEvent {
   createdAt        DateTime @default(now()) @map("created_at")
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("auth_events")
 }
 
 model ChatMessage {
@@ -94,4 +107,23 @@ model ChatMessage {
   createdAt DateTime @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("chat_messages")
+}
+
+model UserCalendarIntegration {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @unique @map("user_id") @db.Uuid
+  provider     String    @default("google")
+  calendarId   String    @default("primary") @map("calendar_id")
+  accessToken  String?   @map("access_token")
+  refreshToken String?   @map("refresh_token")
+  scope        String?
+  expiryDate   BigInt?   @map("expiry_date") // ms epoch
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_calendar_integrations")
 }
