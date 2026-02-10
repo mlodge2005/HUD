@@ -98,7 +98,7 @@ export default function HUDClient({ user }: { user: AuthUser }) {
       const m = msg as RTStreamRequest;
       const current = streamStatusRef.current;
       const amStreamer = current.activeStreamerUserId === user.id;
-      if (amStreamer || user.role === "admin") {
+      if (amStreamer) {
         setRequestModal({ fromUserId: m.fromUserId, fromUsername: m.fromUsername, ts: m.ts });
       }
     } else if (msg.type === "stream:handoff") {
@@ -106,7 +106,7 @@ export default function HUDClient({ user }: { user: AuthUser }) {
     } else if (msg.type === "stream:request:response") {
       setRequestModal(null);
     }
-  }, [user.id, user.role]);
+  }, [user.id]);
 
   const adoptStream = useCallback(async () => {
     setAdoptLoading(true);
@@ -261,7 +261,7 @@ export default function HUDClient({ user }: { user: AuthUser }) {
         <MapWidget />
       </div>
       <div className="absolute bottom-4 left-4 z-20 w-80 max-h-64">
-        <ChatWidget room={room} user={user} />
+        <ChatWidget user={user} />
       </div>
 
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex gap-2 items-center">
@@ -275,7 +275,7 @@ export default function HUDClient({ user }: { user: AuthUser }) {
             {requestLoading ? "Requesting…" : "Request to Stream"}
           </button>
         )}
-        {(isStreamer || user.role === "admin") && (
+        {user.role === "admin" && (
           <Link href="/admin" className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500">
             Admin
           </Link>
@@ -305,7 +305,7 @@ export default function HUDClient({ user }: { user: AuthUser }) {
         </button>
       </div>
 
-      {requestModal && (isStreamer || user.role === "admin") && (
+      {requestModal && isStreamer && (
         <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-30">
           <div className="bg-white text-gray-900 rounded-lg p-6 max-w-sm w-full mx-4">
             <p className="font-medium mb-2">
