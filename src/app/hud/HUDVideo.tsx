@@ -101,7 +101,8 @@ export default function HUDVideo({
 
       await roomInstance.connect(data.url, data.token);
       if (isDev) console.log("[HUDVideo] LiveKit connect success (viewer token), identity:", roomInstance.localParticipant.identity);
-      roomInstance.localParticipant.setMetadata(JSON.stringify({ userId, displayName }));
+      // Removed: setMetadata causes SignalRequestError "does not have permission to update own metadata"
+      // unless token has canUpdateOwnMetadata. We don't need metadata to publish camera.
 
       if (!cancelled) {
         setStreamerControls(isStreamer);
@@ -216,7 +217,7 @@ export default function HUDVideo({
       newRoom = new Room();
       roomRef.current = newRoom;
       await newRoom.connect(data.url, data.token);
-      newRoom.localParticipant.setMetadata(JSON.stringify({ userId, displayName }));
+      // Removed: setMetadata causes permission errors; token does not grant canUpdateOwnMetadata.
       if (isDev) console.log("[HUDVideo] goLive: room connected", { roomName: newRoom.name, localIdentity: newRoom.localParticipant.identity });
 
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
@@ -327,7 +328,7 @@ export default function HUDVideo({
         if (videoRef.current && track.kind === Track.Kind.Video) videoRef.current.srcObject = null;
       });
       await newRoom.connect(data.url, data.token);
-      newRoom.localParticipant.setMetadata(JSON.stringify({ userId, displayName }));
+      // Removed: setMetadata causes permission errors; not required for viewer reconnection.
       onRoomReady(newRoom);
       if (isDev) console.log("[HUDVideo] stopLive: reconnected with viewer token");
     } catch (err) {

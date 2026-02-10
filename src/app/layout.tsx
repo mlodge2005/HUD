@@ -6,6 +6,10 @@ export const metadata: Metadata = {
   description: "Streamer/Viewer HUD with Admin",
 };
 
+// No global scripts (e.g. public/index.js) or window.onresize are used in this app.
+// If you see "Cannot read properties of undefined (reading 'style')" at index.js, it is
+// likely from a dependency bundle (e.g. livekit-client); the HUD is wrapped in an error boundary.
+
 export default function RootLayout({
   children,
 }: Readonly<{
