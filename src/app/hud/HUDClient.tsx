@@ -19,7 +19,7 @@ import {
   type RTStreamHandoff,
 } from "@/lib/realtime";
 
-type AuthUser = {
+export type AuthUser = {
   id: string;
   username: string;
   displayName: string;

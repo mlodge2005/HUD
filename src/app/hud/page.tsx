@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getOptionalAuth } from "@/lib/auth";
-import HUDClient from "./HUDClient";
 import HUDErrorBoundary from "./HUDErrorBoundary";
+import HUDClientLoader from "./HUDClientLoader";
 
 export default async function HUDPage() {
   const user = await getOptionalAuth();
@@ -10,7 +10,7 @@ export default async function HUDPage() {
 
   return (
     <HUDErrorBoundary>
-      <HUDClient user={user} />
+      <HUDClientLoader user={user} />
     </HUDErrorBoundary>
   );
 }

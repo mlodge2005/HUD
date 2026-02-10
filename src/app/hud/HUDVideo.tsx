@@ -56,6 +56,15 @@ export default function HUDVideo({
     }
   }
 
+  /** Set participant metadata once after connect; does not retry. Logs failure once. */
+  function setMetadataOnce(roomInstance: Room, meta: { userId: string; displayName: string }) {
+    try {
+      roomInstance.localParticipant.setMetadata(JSON.stringify(meta));
+    } catch (err) {
+      if (isDev) console.warn("[HUDVideo] setMetadata failed (once):", err);
+    }
+  }
+
   function logDiagnostics(roomInstance: Room, label: string) {
     if (!isDev) return;
     const local = roomInstance.localParticipant;
@@ -101,8 +110,7 @@ export default function HUDVideo({
 
       await roomInstance.connect(data.url, data.token);
       if (isDev) console.log("[HUDVideo] LiveKit connect success (viewer token), identity:", roomInstance.localParticipant.identity);
-      // Removed: setMetadata causes SignalRequestError "does not have permission to update own metadata"
-      // unless token has canUpdateOwnMetadata. We don't need metadata to publish camera.
+      setMetadataOnce(roomInstance, { userId, displayName });
 
       if (!cancelled) {
         setStreamerControls(isStreamer);
@@ -217,7 +225,7 @@ export default function HUDVideo({
       newRoom = new Room();
       roomRef.current = newRoom;
       await newRoom.connect(data.url, data.token);
-      // Removed: setMetadata causes permission errors; token does not grant canUpdateOwnMetadata.
+      setMetadataOnce(newRoom, { userId, displayName });
       if (isDev) console.log("[HUDVideo] goLive: room connected", { roomName: newRoom.name, localIdentity: newRoom.localParticipant.identity });
 
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
@@ -328,7 +336,7 @@ export default function HUDVideo({
         if (videoRef.current && track.kind === Track.Kind.Video) videoRef.current.srcObject = null;
       });
       await newRoom.connect(data.url, data.token);
-      // Removed: setMetadata causes permission errors; not required for viewer reconnection.
+      setMetadataOnce(newRoom, { userId, displayName });
       onRoomReady(newRoom);
       if (isDev) console.log("[HUDVideo] stopLive: reconnected with viewer token");
     } catch (err) {

@@ -26,6 +26,7 @@ export async function POST() {
       canSubscribe: true,
       canPublish: false,
       canPublishData: true,
+      canUpdateOwnMetadata: true,
     });
     const token = await at.toJwt();
     return NextResponse.json({ token, url });

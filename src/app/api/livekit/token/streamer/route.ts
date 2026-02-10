@@ -35,6 +35,7 @@ export async function POST() {
       canPublish: true,
       canSubscribe: true,
       canPublishData: true,
+      canUpdateOwnMetadata: true,
       canPublishSources: [TrackSource.CAMERA],
     });
     const token = await at.toJwt();
