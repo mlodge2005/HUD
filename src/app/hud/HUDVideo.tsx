@@ -5,7 +5,6 @@ import { Room, RoomEvent, Track, LocalVideoTrack } from "livekit-client";
 import { decodeRTMessage, encodeRTMessage, type RTMessage, type RTStreamStatus } from "@/lib/realtime";
 
 const isDev = typeof process !== "undefined" && process.env.NODE_ENV !== "production";
-const PUBLISH_CONFIRM_TIMEOUT_MS = 3000;
 
 type StreamUiState = "idle" | "connecting" | "live" | "error";
 
@@ -55,12 +54,6 @@ export default function HUDVideo({
     } catch {
       return participant.identity === want;
     }
-  }
-
-  function hasLocalVideoPublished(roomInstance: Room): boolean {
-    const pubs = Array.from(roomInstance.localParticipant.trackPublications.values());
-    const videoCount = pubs.filter((p) => p.track?.kind === Track.Kind.Video).length;
-    return videoCount > 0;
   }
 
   function logDiagnostics(roomInstance: Room, label: string) {
@@ -218,37 +211,45 @@ export default function HUDVideo({
         if (isDev) console.log("[HUDVideo] goLive: token failed", res.status, data);
         return;
       }
-      if (isDev) console.log("[HUDVideo] goLive: got streamer token, disconnecting viewer room");
+      if (isDev) console.log("[HUDVideo] STREAMER TOKEN fetched");
       await r.disconnect();
       newRoom = new Room();
       roomRef.current = newRoom;
       await newRoom.connect(data.url, data.token);
       newRoom.localParticipant.setMetadata(JSON.stringify({ userId, displayName }));
-      if (isDev) console.log("[HUDVideo] goLive: LiveKit connect success, identity:", newRoom.localParticipant.identity);
+      if (isDev) console.log("[HUDVideo] goLive: room connected", { roomName: newRoom.name, localIdentity: newRoom.localParticipant.identity });
 
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       videoTrack = new LocalVideoTrack(stream.getVideoTracks()[0]);
+      if (isDev) console.log("[HUDVideo] local video track created");
       await newRoom.localParticipant.publishTrack(videoTrack, { simulcast: false });
-      if (isDev) console.log("[HUDVideo] goLive: publishTrack() returned (await completed)");
+      if (isDev) console.log("[HUDVideo] publishTrack resolved");
 
-      const deadline = Date.now() + PUBLISH_CONFIRM_TIMEOUT_MS;
-      let confirmed = hasLocalVideoPublished(newRoom);
-      while (!confirmed && Date.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, 200));
-        confirmed = hasLocalVideoPublished(newRoom);
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      const videoPubs = newRoom.localParticipant.videoTrackPublications;
+      const videoPubsSize = videoPubs.size;
+      const videoPubsList = Array.from(videoPubs.values()).map((p) => ({ source: p.source, muted: p.isMuted, sid: p.trackSid }));
+      const remoteVids = Array.from(newRoom.remoteParticipants.values()).map((p) => ({ id: p.identity, vids: p.videoTrackPublications.size }));
+      if (isDev) {
+        console.log("[HUDVideo] 2s post-publish check", {
+          localVideoTrackPublicationsSize: videoPubsSize,
+          localVideoTrackPublications: videoPubsList,
+          remoteParticipants: remoteVids,
+        });
       }
-      logDiagnostics(newRoom, "goLive after publish");
 
-      if (!confirmed) {
-        const msg = "Publish not confirmed (no local video track). Check camera permissions.";
+      if (videoPubsSize === 0) {
+        const msg = "Publish failed: no published video track. Likely token perms or reconnect failure.";
         setStreamError(msg);
         setStreamUiState("error");
         videoTrack?.stop();
         await newRoom.disconnect();
         roomRef.current = null;
-        if (isDev) console.error("[HUDVideo] goLive: publish confirmation timeout or no video track");
+        if (isDev) console.error("[HUDVideo] goLive: no published video track after 2s");
         return;
       }
+
+      logDiagnostics(newRoom, "goLive after publish");
 
       await fetch("/api/stream/set-live", {
         method: "POST",

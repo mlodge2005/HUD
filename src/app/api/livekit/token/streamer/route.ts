@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { maybeExpireStreamer, getStreamState } from "@/lib/stream-state";
-import { AccessToken } from "livekit-server-sdk";
+import { AccessToken, TrackSource } from "livekit-server-sdk";
 
 const LIVEKIT_ROOM = "hud-room";
 
@@ -35,6 +35,7 @@ export async function POST() {
       canPublish: true,
       canSubscribe: true,
       canPublishData: true,
+      canPublishSources: [TrackSource.CAMERA],
     });
     const token = await at.toJwt();
     return NextResponse.json({ token, url });
