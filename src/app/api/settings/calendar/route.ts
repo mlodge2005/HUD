@@ -3,9 +3,8 @@ import { z } from "zod";
 import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { writeAuditLog } from "@/lib/audit";
-import { fetchCalendarEvents } from "@/lib/user-calendar";
 
-export async function GET(request: Request) {
+export async function GET() {
   let user;
   try {
     user = await requireAuth();

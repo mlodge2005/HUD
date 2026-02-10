@@ -17,11 +17,13 @@ function getOAuth2Client(request: Request, integration: UserCalendarIntegration)
   return client;
 }
 
+type OAuth2ClientInstance = NonNullable<ReturnType<typeof getOAuth2Client>>;
+
 /** Ensure valid access token; refresh if expired. Persist new token if refreshed. */
 export async function ensureValidToken(
   request: Request,
   integration: UserCalendarIntegration
-): Promise<{ client: google.auth.OAuth2; integration: UserCalendarIntegration } | null> {
+): Promise<{ client: OAuth2ClientInstance; integration: UserCalendarIntegration } | null> {
   const client = getOAuth2Client(request, integration);
   if (!client || !integration.refreshToken) return null;
   const nowMs = Date.now();

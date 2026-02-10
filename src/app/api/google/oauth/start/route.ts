@@ -7,8 +7,7 @@ import { getRedirectUri } from "@/lib/google-oauth";
 export async function GET(request: NextRequest) {
   try {
     await requireAuth();
-  } catch (e: unknown) {
-    const err = e as { statusCode?: number };
+  } catch {
     return NextResponse.redirect(new URL("/login?from=/settings", request.url));
   }
   const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
