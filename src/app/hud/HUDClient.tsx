@@ -216,6 +216,7 @@ export default function HUDClient({ user }: { user: AuthUser }) {
         isStreamer={isStreamer}
         userId={user.id}
         displayName={user.displayName}
+        activeStreamerUserId={streamStatus.activeStreamerUserId}
         room={room}
         onRoomReady={setRoom}
         onDataReceived={onDataReceived}

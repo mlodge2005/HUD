@@ -4,10 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import { Room, RoomEvent, Track, LocalVideoTrack } from "livekit-client";
 import { decodeRTMessage, encodeRTMessage, type RTMessage, type RTStreamStatus } from "@/lib/realtime";
 
+const isDev = typeof process !== "undefined" && process.env.NODE_ENV !== "production";
+
 type Props = {
   isStreamer: boolean;
   userId: string;
   displayName: string;
+  /** When set, viewers only attach video from this participant (active streamer). */
+  activeStreamerUserId: string | null;
   room: Room | null;
   onRoomReady: (room: Room) => void;
   onDataReceived: (msg: RTMessage) => void;
@@ -18,6 +22,7 @@ export default function HUDVideo({
   isStreamer,
   userId,
   displayName,
+  activeStreamerUserId,
   room,
   onRoomReady,
   onDataReceived,
@@ -27,11 +32,25 @@ export default function HUDVideo({
   const roomRef = useRef<Room | null>(null);
   const [isLive, setIsLive] = useState(false);
   const [streamerControls, setStreamerControls] = useState(false);
+  const [videoError, setVideoError] = useState<string | null>(null);
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const telemetryIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isLiveRef = useRef(false);
   isLiveRef.current = isLive;
   const stopLiveRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  const activeStreamerUserIdRef = useRef(activeStreamerUserId);
+  activeStreamerUserIdRef.current = activeStreamerUserId;
+
+  function isTrackFromActiveStreamer(participant: { identity?: string; metadata?: string }): boolean {
+    const want = activeStreamerUserIdRef.current;
+    if (!want) return true;
+    try {
+      const meta = participant.metadata ? JSON.parse(participant.metadata) : {};
+      return meta.userId === want || participant.identity === want;
+    } catch {
+      return participant.identity === want;
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -45,17 +64,20 @@ export default function HUDVideo({
         return;
       }
       onLiveKitConfig(true);
+      if (isDev) console.log("[HUDVideo] Connecting with viewer token");
       roomInstance = new Room();
       roomRef.current = roomInstance;
 
-      roomInstance.on(RoomEvent.TrackSubscribed, (track) => {
+      roomInstance.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
         if (cancelled || !videoRef.current) return;
-        if (track.kind === Track.Kind.Video) {
-          track.attach(videoRef.current);
-        }
+        if (track.kind !== Track.Kind.Video) return;
+        if (!isTrackFromActiveStreamer(participant)) return;
+        track.attach(videoRef.current);
+        videoRef.current.play().catch(() => {});
+        if (isDev) console.log("[HUDVideo] Attached remote video track from", participant.identity);
       });
-      roomInstance.on(RoomEvent.TrackUnsubscribed, () => {
-        if (videoRef.current) videoRef.current.srcObject = null;
+      roomInstance.on(RoomEvent.TrackUnsubscribed, (track) => {
+        if (videoRef.current && track.kind === Track.Kind.Video) videoRef.current.srcObject = null;
       });
 
       await roomInstance.connect(data.url, data.token);
@@ -154,69 +176,103 @@ export default function HUDVideo({
   const goLive = async () => {
     const r = roomRef.current;
     if (!r) return;
-    const res = await fetch("/api/livekit/token/streamer", { method: "POST" });
-    const data = await res.json();
-    if (!res.ok || !data.token) {
-      alert("Cannot get streamer token. Are you the active streamer?");
-      return;
+    setVideoError(null);
+    try {
+      const res = await fetch("/api/livekit/token/streamer", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok || !data.token) {
+        const msg = data.error || "Cannot get streamer token. Are you the active streamer?";
+        setVideoError(msg);
+        alert(msg);
+        if (isDev) console.log("[HUDVideo] goLive: token failed", res.status, data);
+        return;
+      }
+      if (isDev) console.log("[HUDVideo] goLive: got streamer token, disconnecting viewer room");
+      await r.disconnect();
+      const newRoom = new Room();
+      roomRef.current = newRoom;
+      await newRoom.connect(data.url, data.token);
+      newRoom.localParticipant.setMetadata(JSON.stringify({ userId, displayName }));
+      if (isDev) console.log("[HUDVideo] goLive: connected with streamer token");
+
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      const videoTrack = new LocalVideoTrack(stream.getVideoTracks()[0]);
+      await newRoom.localParticipant.publishTrack(videoTrack, { simulcast: false });
+      if (isDev) {
+        const participants = newRoom.remoteParticipants.size + 1;
+        const tracks = Array.from(newRoom.localParticipant.trackPublications.values());
+        console.log("[HUDVideo] goLive: publishTrack success; participants:", participants, "local tracks:", tracks.length, tracks.map((t) => t.track?.kind));
+      }
+
+      await fetch("/api/stream/set-live", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isLive: true }),
+      });
+      setIsLive(true);
+      if (videoRef.current) {
+        videoTrack.attach(videoRef.current);
+        videoRef.current.play().catch(() => {});
+      }
+      onRoomReady(newRoom);
+      const statusMsg: RTStreamStatus = {
+        type: "stream:status",
+        activeStreamerUserId: userId,
+        isLive: true,
+        liveStartedAt: new Date().toISOString(),
+        ts: Date.now(),
+      };
+      newRoom.localParticipant.publishData(encodeRTMessage(statusMsg), { reliable: true }).catch(() => {});
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Go Live failed";
+      setVideoError(msg);
+      alert(msg);
+      if (isDev) console.error("[HUDVideo] goLive error:", err);
     }
-    await r.disconnect();
-    const newRoom = new Room();
-    roomRef.current = newRoom;
-    await newRoom.connect(data.url, data.token);
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-    const videoTrack = new LocalVideoTrack(stream.getVideoTracks()[0]);
-    await newRoom.localParticipant.publishTrack(videoTrack, { simulcast: false });
-    await fetch("/api/stream/set-live", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ isLive: true }),
-    });
-    setIsLive(true);
-    if (videoRef.current) videoTrack.attach(videoRef.current);
-    onRoomReady(newRoom);
-    const statusMsg: RTStreamStatus = {
-      type: "stream:status",
-      activeStreamerUserId: userId,
-      isLive: true,
-      liveStartedAt: new Date().toISOString(),
-      ts: Date.now(),
-    };
-    newRoom.localParticipant.publishData(encodeRTMessage(statusMsg), { reliable: true }).catch(() => {});
   };
 
   const stopLive = async () => {
     const r = roomRef.current;
     if (!r) return;
-    const statusMsg: RTStreamStatus = {
-      type: "stream:status",
-      activeStreamerUserId: userId,
-      isLive: false,
-      liveStartedAt: null,
-      ts: Date.now(),
-    };
-    r.localParticipant.publishData(encodeRTMessage(statusMsg), { reliable: true }).catch(() => {});
-    r.localParticipant.trackPublications.forEach((pub) => {
-      pub.track?.stop();
-    });
-    await r.disconnect();
-    await fetch("/api/stream/set-live", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ isLive: false }),
-    });
-    setIsLive(false);
-    if (videoRef.current) videoRef.current.srcObject = null;
-    const res = await fetch("/api/livekit/token/viewer", { method: "POST" });
-    const data = await res.json();
-    if (data.token && videoRef.current) {
+    setVideoError(null);
+    try {
+      const statusMsg: RTStreamStatus = {
+        type: "stream:status",
+        activeStreamerUserId: userId,
+        isLive: false,
+        liveStartedAt: null,
+        ts: Date.now(),
+      };
+      r.localParticipant.publishData(encodeRTMessage(statusMsg), { reliable: true }).catch(() => {});
+      r.localParticipant.trackPublications.forEach((pub) => {
+        pub.track?.stop();
+      });
+      await r.disconnect();
+      await fetch("/api/stream/set-live", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isLive: false }),
+      });
+      setIsLive(false);
+      if (videoRef.current) videoRef.current.srcObject = null;
+      if (isDev) console.log("[HUDVideo] stopLive: disconnected, fetching viewer token");
+      const res = await fetch("/api/livekit/token/viewer", { method: "POST" });
+      const data = await res.json();
+      if (!data.token) return;
       const newRoom = new Room();
       roomRef.current = newRoom;
-      newRoom.on(RoomEvent.TrackSubscribed, (track) => {
-        if (track.kind === Track.Kind.Video) track.attach(videoRef.current!);
+      newRoom.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
+        if (!videoRef.current || track.kind !== Track.Kind.Video) return;
+        if (!isTrackFromActiveStreamer(participant)) return;
+        track.attach(videoRef.current);
+        videoRef.current.play().catch(() => {});
       });
       await newRoom.connect(data.url, data.token);
+      newRoom.localParticipant.setMetadata(JSON.stringify({ userId, displayName }));
       onRoomReady(newRoom);
+      if (isDev) console.log("[HUDVideo] stopLive: reconnected with viewer token");
+    } catch (err) {
+      if (isDev) console.error("[HUDVideo] stopLive error:", err);
     }
   };
   stopLiveRef.current = stopLive;
@@ -230,6 +286,11 @@ export default function HUDVideo({
         muted
         className="w-full h-full object-cover"
       />
+      {videoError && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 bg-red-600 text-white px-4 py-2 rounded text-sm max-w-md text-center">
+          {videoError}
+        </div>
+      )}
       {streamerControls && (
         <div className="absolute bottom-20 left-1/2 -translate-x-1/2 flex gap-2 z-20">
           {!isLive ? (
