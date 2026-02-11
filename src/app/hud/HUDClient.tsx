@@ -71,6 +71,14 @@ export default function HUDClient({ user, googleMapsApiKey = "" }: { user: AuthU
     streamStatus.activeStreamerUserId
   );
   const localHeading = useDeviceHeading();
+
+  // DeviceOrientation can transiently return null (permission, sensor hiccup, background tab).
+  // If we publish `heading: null`, we wipe heading for viewers. Cache the last non-null value.
+  const lastNonNullHeadingRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (localHeading.heading != null) lastNonNullHeadingRef.current = localHeading.heading;
+  }, [localHeading.heading]);
+
   const telemetryReceivedAt = streamerTelemetry?.updatedAt ?? 0;
   const telemetryStale = telemetryReceivedAt > 0 && Date.now() - telemetryReceivedAt > 10000;
 
@@ -127,14 +135,20 @@ export default function HUDClient({ user, googleMapsApiKey = "" }: { user: AuthU
           setLastLocalLat(lat);
           setLastLocalLon(lon);
           const accuracy = pos.coords.accuracy ?? null;
-          const heading = localHeading.heading ?? null;
+          const heading = lastNonNullHeadingRef.current;
           (async () => {
             try {
+              const payload: { lat: number; lon: number; accuracy: number | null; heading?: number } = {
+                lat,
+                lon,
+                accuracy,
+              };
+              if (heading != null) payload.heading = heading;
               const res = await fetch("/api/streamer-telemetry", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 credentials: "include",
-                body: JSON.stringify({ lat, lon, heading, accuracy }),
+                body: JSON.stringify(payload),
               });
               setLastPublishAt(Date.now());
               setLastPublishStatus(res.ok ? "ok" : `error ${res.status}`);

@@ -76,7 +76,12 @@ export default function MapWidget({
   const lat = latProp ?? centerLat ?? null;
   const lon = lonProp ?? centerLon ?? null;
 
-  const rotOffset = isDev ? (Number(searchParams.get("rotOffset")) || -90) : -90;
+  // Rotation calibration:
+  // We assume incoming heading uses: 0°=North, 90°=East, increasing clockwise.
+  // If your device/browser differs, calibrate in dev:
+  //   /hud?rotOffset=-90     (or +90)
+  //   /hud?rotInvert=1       (flip direction)
+  const rotOffset = isDev ? (Number(searchParams.get("rotOffset")) || 0) : 0;
   const rotInvert = isDev && searchParams.get("rotInvert") === "1";
 
   function calibratedRotation(rawHeading: number | null): number {
