@@ -1,6 +1,6 @@
 /**
  * Server-side only. Do not import in client components.
- * Uses GOOGLE_MAPS_API_KEY or NEXT_PUBLIC_GOOGLE_MAPS_API_KEY.
+ * Uses GOOGLE_MAPS_API_KEY.
  */
 
 const GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json";
@@ -8,7 +8,6 @@ const GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json";
 function getMapsKey(): string | null {
   return (
     process.env.GOOGLE_MAPS_API_KEY ??
-    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ??
     null
   );
 }
@@ -37,7 +36,7 @@ export async function reverseGeocode(
 ): Promise<ReverseGeocodeResponse> {
   const key = getMapsKey();
   if (!key) {
-    return { ok: false, error: "GOOGLE_MAPS_API_KEY (or NEXT_PUBLIC_GOOGLE_MAPS_API_KEY) not set" };
+    return { ok: false, error: "GOOGLE_MAPS_API_KEY not set" };
   }
 
   const url = `${GEOCODE_URL}?latlng=${lat},${lon}&key=${key}`;

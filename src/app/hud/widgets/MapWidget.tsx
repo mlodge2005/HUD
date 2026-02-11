@@ -14,21 +14,30 @@ declare global {
 }
 
 type MapWidgetProps = {
-  centerLat: number | null;
-  centerLon: number | null;
+  /** Streamer telemetry lat (preferred). centerLat/centerLon kept for compatibility. */
+  lat?: number | null;
+  lon?: number | null;
+  centerLat?: number | null;
+  centerLon?: number | null;
   stale?: boolean;
+  /** Passed from server (GOOGLE_MAPS_API_KEY) so only one env var is needed. */
+  googleMapsApiKey?: string;
 };
 
-export default function MapWidget({ centerLat, centerLon, stale }: MapWidgetProps) {
+export default function MapWidget({
+  lat: latProp,
+  lon: lonProp,
+  centerLat,
+  centerLon,
+  stale,
+  googleMapsApiKey: keyProp = "",
+}: MapWidgetProps) {
   const { state: diag, setDiagnostics } = useMapsDiagnostics();
   const scriptLoadedRef = useRef(false);
-  const lat = centerLat;
-  const lon = centerLon;
+  const lat = latProp ?? centerLat ?? null;
+  const lon = lonProp ?? centerLon ?? null;
 
-  const key =
-    typeof process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY === "string"
-      ? process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
-      : "";
+  const key = typeof keyProp === "string" ? keyProp : "";
   const keySet = key.length > 0;
   const keyLength = key.length;
 
@@ -82,7 +91,7 @@ export default function MapWidget({ centerLat, centerLon, stale }: MapWidgetProp
   const showErrorBanner = !keySet || authFailed || scriptError;
 
   const errorMessage = !keySet
-    ? "Maps API key not set (NEXT_PUBLIC_GOOGLE_MAPS_API_KEY)."
+    ? "Maps API key not set (GOOGLE_MAPS_API_KEY)."
     : authFailed
       ? "Maps API key rejected (auth failure)."
       : scriptError

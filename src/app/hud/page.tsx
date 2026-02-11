@@ -8,9 +8,10 @@ export default async function HUDPage() {
   if (!user) redirect("/login?from=/hud");
   if (user.mustChangePassword) redirect("/change-password?from=/hud");
 
+  const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY ?? "";
   return (
     <HUDErrorBoundary>
-      <HUDClientLoader user={user} />
+      <HUDClientLoader user={user} googleMapsApiKey={googleMapsApiKey} />
     </HUDErrorBoundary>
   );
 }

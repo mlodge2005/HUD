@@ -7,8 +7,8 @@ import type { AuthUser } from "./HUDClient";
 // dynamic with ssr:false must be used in a Client Component in Next 15.
 const HUDClient = dynamic(() => import("./HUDClient"), { ssr: false });
 
-type Props = { user: AuthUser };
+type Props = { user: AuthUser; googleMapsApiKey: string };
 
-export default function HUDClientLoader({ user }: Props) {
-  return <HUDClient user={user} />;
+export default function HUDClientLoader({ user, googleMapsApiKey }: Props) {
+  return <HUDClient user={user} googleMapsApiKey={googleMapsApiKey} />;
 }

@@ -37,8 +37,10 @@ type StreamStatus = {
 };
 
 const POLL_STATE_INTERVAL_MS = 5000;
+/** Must match LiveKit room name for telemetry channel hud:telemetry:${TELEMETRY_ROOM_NAME} */
+const TELEMETRY_ROOM_NAME = "hud-room";
 
-export default function HUDClient({ user }: { user: AuthUser }) {
+export default function HUDClient({ user, googleMapsApiKey = "" }: { user: AuthUser; googleMapsApiKey?: string }) {
   const router = useRouter();
   const [streamStatus, setStreamStatus] = useState<StreamStatus>({
     activeStreamerUserId: null,
@@ -94,9 +96,9 @@ export default function HUDClient({ user }: { user: AuthUser }) {
     return () => clearInterval(interval);
   }, []);
 
-  // Supabase telemetry: subscribe (all clients); streamer will also send via ref
+  // Supabase telemetry: subscribe for current room (all clients); streamer will also send via ref
   useEffect(() => {
-    const sub = subscribeTelemetry((payload) => {
+    const sub = subscribeTelemetry(TELEMETRY_ROOM_NAME, (payload) => {
       const now = Date.now();
       setStreamerTelemetry(payload);
       setTelemetryReceivedAt(now);
@@ -123,7 +125,7 @@ export default function HUDClient({ user }: { user: AuthUser }) {
     return () => clearInterval(t);
   }, [telemetryReceivedAt]);
 
-  // Streamer only: publish telemetry loop (geolocation + heading)
+  // Streamer only: publish telemetry at 2/sec max (500ms interval), geolocation + device orientation
   useEffect(() => {
     if (!isStreamer || !telemetrySubscriptionRef.current) return;
     if (!navigator.geolocation) return;
@@ -148,7 +150,7 @@ export default function HUDClient({ user }: { user: AuthUser }) {
         () => {},
         { enableHighAccuracy: true }
       );
-    }, 1000);
+    }, 500);
     return () => clearInterval(interval);
   }, [isStreamer, user.id]);
 
@@ -316,7 +318,7 @@ export default function HUDClient({ user }: { user: AuthUser }) {
         <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 text-sm">
           {telemetryStale ? (
             <span className="bg-red-900/90 text-white px-3 py-1 rounded">
-              Stream offline / telemetry stale
+              Streamer offline / telemetry stale
             </span>
           ) : (
             <>
@@ -357,9 +359,10 @@ export default function HUDClient({ user }: { user: AuthUser }) {
       </div>
       <div className="absolute bottom-4 right-4 z-20 w-64 h-48">
         <MapWidget
-          centerLat={streamerTelemetry?.lat ?? null}
-          centerLon={streamerTelemetry?.lon ?? null}
+          lat={streamerTelemetry?.lat ?? null}
+          lon={streamerTelemetry?.lon ?? null}
           stale={telemetryStale}
+          googleMapsApiKey={googleMapsApiKey}
         />
       </div>
       <MapsDiagnosticsPanel />
