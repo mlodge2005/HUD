@@ -1,7 +1,5 @@
 "use client";
 
-import { useState, useEffect } from "react";
-
 const CARDINALS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
 
 function headingToCardinal(deg: number): string {
@@ -9,21 +7,12 @@ function headingToCardinal(deg: number): string {
   return CARDINALS[i];
 }
 
-export default function CompassWidget() {
-  const [heading, setHeading] = useState<number | null>(null);
+type Props = {
+  heading: number | null;
+  stale?: boolean;
+};
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetch("/api/telemetry/latest")
-        .then((r) => r.json())
-        .then((data) => {
-          if (data.headingDeg != null) setHeading(data.headingDeg);
-        })
-        .catch(() => {});
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
-
+export default function CompassWidget({ heading, stale }: Props) {
   if (heading == null) {
     return (
       <div className="bg-black/60 text-white rounded-lg px-4 py-2 text-center text-sm">
@@ -34,6 +23,9 @@ export default function CompassWidget() {
 
   return (
     <div className="bg-black/60 text-white rounded-lg px-4 py-2 text-center">
+      {stale && (
+        <div className="text-xs text-amber-400 mb-0.5">Stale</div>
+      )}
       <div className="text-2xl font-mono">{Math.round(heading)}°</div>
       <div className="text-sm">{headingToCardinal(heading)}</div>
     </div>

@@ -36,7 +36,6 @@ export default function HUDVideo({
   const [streamError, setStreamError] = useState<string | null>(null);
   const [streamerControls, setStreamerControls] = useState(false);
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const telemetryIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isLiveRef = useRef(false);
   isLiveRef.current = streamUiState === "live";
   const stopLiveRef = useRef<() => Promise<void>>(() => Promise.resolve());
@@ -170,36 +169,6 @@ export default function HUDVideo({
       return () => window.removeEventListener("deviceorientation", handler);
     }
     return () => {};
-  }, [isStreamer, isLive]);
-
-  useEffect(() => {
-    if (!isStreamer || !isLive) return;
-    const interval = setInterval(() => {
-      if (!navigator.geolocation) return;
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const lat = pos.coords.latitude;
-          const lon = pos.coords.longitude;
-          const accuracyM = pos.coords.accuracy ?? undefined;
-          fetch("/api/telemetry/update", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              lat,
-              lon,
-              headingDeg: (window as unknown as { _lastHeading?: number })._lastHeading,
-              accuracyM,
-            }),
-          }).catch(() => {});
-        },
-        () => {},
-        { enableHighAccuracy: true }
-      );
-    }, 1500);
-    telemetryIntervalRef.current = interval;
-    return () => {
-      if (telemetryIntervalRef.current) clearInterval(telemetryIntervalRef.current);
-    };
   }, [isStreamer, isLive]);
 
   const goLive = async () => {

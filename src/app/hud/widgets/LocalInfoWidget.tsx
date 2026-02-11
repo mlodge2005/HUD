@@ -2,28 +2,20 @@
 
 import { useState, useEffect } from "react";
 
-export default function LocalInfoWidget() {
+type Props = {
+  lat: number | null;
+  lon: number | null;
+  stale?: boolean;
+};
+
+export default function LocalInfoWidget({ lat, lon, stale }: Props) {
   const [time, setTime] = useState(new Date().toISOString());
   const [location, setLocation] = useState<string | null>(null);
   const [temp, setTemp] = useState<string | null>(null);
-  const [lat, setLat] = useState<number | null>(null);
-  const [lon, setLon] = useState<number | null>(null);
 
   useEffect(() => {
     const t = setInterval(() => setTime(new Date().toISOString()), 1000);
     return () => clearInterval(t);
-  }, []);
-
-  useEffect(() => {
-    fetch("/api/telemetry/latest")
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.lat != null && data.lon != null) {
-          setLat(data.lat);
-          setLon(data.lon);
-        }
-      })
-      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -43,10 +35,12 @@ export default function LocalInfoWidget() {
 
   return (
     <div className="bg-black/60 text-white rounded-lg p-3 text-sm">
+      {stale && <div className="text-xs text-amber-400 mb-0.5">Stale</div>}
       <div className="font-mono">{new Date(time).toLocaleTimeString()}</div>
       {location && <div className="text-gray-300 truncate">{location}</div>}
       {temp && <div>{temp}</div>}
-      {!location && !temp && <div className="text-gray-400">Data Unavailable</div>}
+      {lat == null && lon == null && <div className="text-gray-400">Data Unavailable</div>}
+      {lat != null && lon != null && !location && !temp && <div className="text-gray-400">Loading…</div>}
     </div>
   );
 }

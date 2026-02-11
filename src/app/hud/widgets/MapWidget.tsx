@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useMapsDiagnostics } from "./MapsDiagnosticsContext";
 
 const MAPS_SCRIPT_BASE = "https://maps.googleapis.com/maps/api/js";
@@ -13,11 +13,17 @@ declare global {
   }
 }
 
-export default function MapWidget() {
+type MapWidgetProps = {
+  centerLat: number | null;
+  centerLon: number | null;
+  stale?: boolean;
+};
+
+export default function MapWidget({ centerLat, centerLon, stale }: MapWidgetProps) {
   const { state: diag, setDiagnostics } = useMapsDiagnostics();
-  const [lat, setLat] = useState<number | null>(null);
-  const [lon, setLon] = useState<number | null>(null);
   const scriptLoadedRef = useRef(false);
+  const lat = centerLat;
+  const lon = centerLon;
 
   const key =
     typeof process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY === "string"
@@ -71,21 +77,6 @@ export default function MapWidget() {
     };
   }, [keySet, key, setDiagnostics]);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetch("/api/telemetry/latest")
-        .then((r) => r.json())
-        .then((data) => {
-          if (data.lat != null && data.lon != null) {
-            setLat(data.lat);
-            setLon(data.lon);
-          }
-        })
-        .catch(() => {});
-    }, 2000);
-    return () => clearInterval(interval);
-  }, []);
-
   const authFailed = diag.authFailureAt != null;
   const scriptError = diag.scriptError != null;
   const showErrorBanner = !keySet || authFailed || scriptError;
@@ -116,15 +107,19 @@ export default function MapWidget() {
 
   if (lat == null || lon == null) {
     return (
-      <div className="bg-black/60 text-white rounded-lg p-3 h-full flex items-center justify-center text-sm">
-        Data Unavailable
+      <div className="bg-black/60 text-white rounded-lg p-3 h-full flex flex-col items-center justify-center text-sm gap-1">
+        {stale && <span className="text-amber-400 text-xs">Stale</span>}
+        <span>No location</span>
       </div>
     );
   }
 
   const src = `https://www.google.com/maps/embed/v1/view?key=${encodeURIComponent(key)}&center=${lat},${lon}&zoom=15`;
   return (
-    <div className="bg-black/60 rounded-lg overflow-hidden h-full w-full">
+    <div className="relative bg-black/60 rounded-lg overflow-hidden h-full w-full">
+      {stale && (
+        <div className="absolute top-1 left-1 z-10 text-amber-400 text-xs bg-black/60 px-1 rounded">Stale</div>
+      )}
       <iframe
         title="Map"
         src={src}

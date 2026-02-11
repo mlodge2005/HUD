@@ -20,6 +20,7 @@ import {
   type RTStreamRequestResponse,
   type RTStreamHandoff,
 } from "@/lib/realtime";
+import { subscribeTelemetry, type TelemetryPayload } from "@/lib/telemetry";
 
 export type AuthUser = {
   id: string;
@@ -56,6 +57,11 @@ export default function HUDClient({ user }: { user: AuthUser }) {
   } | null>(null);
   const [liveKitConfigured, setLiveKitConfigured] = useState<boolean | null>(null);
   const [calendarRefreshKey, setCalendarRefreshKey] = useState(0);
+  const [streamerTelemetry, setStreamerTelemetry] = useState<TelemetryPayload | null>(null);
+  const [telemetryReceivedAt, setTelemetryReceivedAt] = useState<number>(0);
+  const [telemetryStale, setTelemetryStale] = useState(false);
+  const [bannerNow, setBannerNow] = useState(0);
+  const telemetrySubscriptionRef = useRef<ReturnType<typeof subscribeTelemetry> | null>(null);
 
   const isStreamer = streamStatus.activeStreamerUserId === user.id;
   const streamStatusRef = useRef(streamStatus);
@@ -87,6 +93,64 @@ export default function HUDClient({ user }: { user: AuthUser }) {
     const interval = setInterval(fetchState, POLL_STATE_INTERVAL_MS);
     return () => clearInterval(interval);
   }, []);
+
+  // Supabase telemetry: subscribe (all clients); streamer will also send via ref
+  useEffect(() => {
+    const sub = subscribeTelemetry((payload) => {
+      const now = Date.now();
+      setStreamerTelemetry(payload);
+      setTelemetryReceivedAt(now);
+      setBannerNow(now);
+    });
+    telemetrySubscriptionRef.current = sub;
+    return () => {
+      sub.unsubscribe();
+      telemetrySubscriptionRef.current = null;
+    };
+  }, []);
+
+  // Stale check and tick so banner "Xs ago" updates
+  useEffect(() => {
+    if (telemetryReceivedAt === 0) {
+      setTelemetryStale(false);
+      return;
+    }
+    const t = setInterval(() => {
+      const now = Date.now();
+      setTelemetryStale(now - telemetryReceivedAt > 10000);
+      setBannerNow(now);
+    }, 1000);
+    return () => clearInterval(t);
+  }, [telemetryReceivedAt]);
+
+  // Streamer only: publish telemetry loop (geolocation + heading)
+  useEffect(() => {
+    if (!isStreamer || !telemetrySubscriptionRef.current) return;
+    if (!navigator.geolocation) return;
+    const send = telemetrySubscriptionRef.current.send;
+    const interval = setInterval(() => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = pos.coords.latitude;
+          const lon = pos.coords.longitude;
+          const accuracy = pos.coords.accuracy ?? null;
+          const heading = (window as unknown as { _lastHeading?: number })._lastHeading ?? null;
+          send({
+            streamerId: user.id,
+            lat,
+            lon,
+            heading,
+            accuracy,
+            ts: Date.now(),
+            isLive: streamStatusRef.current.isLive,
+          });
+        },
+        () => {},
+        { enableHighAccuracy: true }
+      );
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isStreamer, user.id]);
 
   const onDataReceived = useCallback((msg: RTMessage) => {
     if (msg.type === "stream:status") {
@@ -248,6 +312,30 @@ export default function HUDClient({ user }: { user: AuthUser }) {
         </div>
       )}
 
+      {streamStatus.activeStreamerUserId && (
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 text-sm">
+          {telemetryStale ? (
+            <span className="bg-red-900/90 text-white px-3 py-1 rounded">
+              Stream offline / telemetry stale
+            </span>
+          ) : (
+            <>
+              <span className="bg-black/70 text-white px-2 py-1 rounded">
+                Streamer: {streamStatus.activeStreamerUserId.slice(0, 8)}…
+              </span>
+              {telemetryReceivedAt > 0 && bannerNow > 0 && (
+                <span className="text-white/90">
+                  {Math.round((bannerNow - telemetryReceivedAt) / 1000)}s ago
+                </span>
+              )}
+              {streamStatus.isLive && (
+                <span className="bg-red-600 text-white px-2 py-1 rounded font-medium">LIVE</span>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       <div className="absolute top-4 left-4 z-20 w-48">
         <CalendarWidget
           activeStreamerUserId={streamStatus.activeStreamerUserId}
@@ -255,13 +343,24 @@ export default function HUDClient({ user }: { user: AuthUser }) {
         />
       </div>
       <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20">
-        <CompassWidget />
+        <CompassWidget
+          heading={streamerTelemetry?.heading ?? null}
+          stale={telemetryStale}
+        />
       </div>
       <div className="absolute top-4 right-4 z-20 w-48">
-        <LocalInfoWidget />
+        <LocalInfoWidget
+          lat={streamerTelemetry?.lat ?? null}
+          lon={streamerTelemetry?.lon ?? null}
+          stale={telemetryStale}
+        />
       </div>
       <div className="absolute bottom-4 right-4 z-20 w-64 h-48">
-        <MapWidget />
+        <MapWidget
+          centerLat={streamerTelemetry?.lat ?? null}
+          centerLon={streamerTelemetry?.lon ?? null}
+          stale={telemetryStale}
+        />
       </div>
       <MapsDiagnosticsPanel />
       <div className="absolute bottom-4 left-4 z-20 w-80 max-h-64">
