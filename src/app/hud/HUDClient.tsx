@@ -20,7 +20,8 @@ import {
   type RTStreamRequestResponse,
   type RTStreamHandoff,
 } from "@/lib/realtime";
-import { subscribeTelemetry, type TelemetryPayload } from "@/lib/telemetry";
+import { useStreamerTelemetry } from "./hooks/useStreamerTelemetry";
+import { useDeviceHeading } from "./hooks/useDeviceHeading";
 
 export type AuthUser = {
   id: string;
@@ -37,8 +38,7 @@ type StreamStatus = {
 };
 
 const POLL_STATE_INTERVAL_MS = 5000;
-/** Must match LiveKit room name for telemetry channel hud:telemetry:${TELEMETRY_ROOM_NAME} */
-const TELEMETRY_ROOM_NAME = "hud-room";
+const TELEMETRY_PUBLISH_INTERVAL_MS = 400;
 
 export default function HUDClient({ user, googleMapsApiKey = "" }: { user: AuthUser; googleMapsApiKey?: string }) {
   const router = useRouter();
@@ -59,11 +59,12 @@ export default function HUDClient({ user, googleMapsApiKey = "" }: { user: AuthU
   } | null>(null);
   const [liveKitConfigured, setLiveKitConfigured] = useState<boolean | null>(null);
   const [calendarRefreshKey, setCalendarRefreshKey] = useState(0);
-  const [streamerTelemetry, setStreamerTelemetry] = useState<TelemetryPayload | null>(null);
-  const [telemetryReceivedAt, setTelemetryReceivedAt] = useState<number>(0);
-  const [telemetryStale, setTelemetryStale] = useState(false);
   const [bannerNow, setBannerNow] = useState(0);
-  const telemetrySubscriptionRef = useRef<ReturnType<typeof subscribeTelemetry> | null>(null);
+
+  const streamerTelemetry = useStreamerTelemetry(streamStatus.activeStreamerUserId);
+  const deviceHeading = useDeviceHeading();
+  const telemetryReceivedAt = streamerTelemetry.updatedAt ?? 0;
+  const telemetryStale = telemetryReceivedAt > 0 && Date.now() - telemetryReceivedAt > 10000;
 
   const isStreamer = streamStatus.activeStreamerUserId === user.id;
   const streamStatusRef = useRef(streamStatus);
@@ -96,63 +97,36 @@ export default function HUDClient({ user, googleMapsApiKey = "" }: { user: AuthU
     return () => clearInterval(interval);
   }, []);
 
-  // Supabase telemetry: subscribe for current room (all clients); streamer will also send via ref
+  // Banner tick so "Xs ago" updates
   useEffect(() => {
-    const sub = subscribeTelemetry(TELEMETRY_ROOM_NAME, (payload) => {
-      const now = Date.now();
-      setStreamerTelemetry(payload);
-      setTelemetryReceivedAt(now);
-      setBannerNow(now);
-    });
-    telemetrySubscriptionRef.current = sub;
-    return () => {
-      sub.unsubscribe();
-      telemetrySubscriptionRef.current = null;
-    };
+    const t = setInterval(() => setBannerNow(Date.now()), 1000);
+    return () => clearInterval(t);
   }, []);
 
-  // Stale check and tick so banner "Xs ago" updates
+  // Streamer only: publish telemetry to Supabase (geo + device heading), throttle 250–500ms, never if lat/lon missing
   useEffect(() => {
-    if (telemetryReceivedAt === 0) {
-      setTelemetryStale(false);
-      return;
-    }
-    const t = setInterval(() => {
-      const now = Date.now();
-      setTelemetryStale(now - telemetryReceivedAt > 10000);
-      setBannerNow(now);
-    }, 1000);
-    return () => clearInterval(t);
-  }, [telemetryReceivedAt]);
-
-  // Streamer only: publish telemetry at 2/sec max (500ms interval), geolocation + device orientation
-  useEffect(() => {
-    if (!isStreamer || !telemetrySubscriptionRef.current) return;
-    if (!navigator.geolocation) return;
-    const send = telemetrySubscriptionRef.current.send;
+    if (!isStreamer || !navigator.geolocation) return;
     const interval = setInterval(() => {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           const lat = pos.coords.latitude;
           const lon = pos.coords.longitude;
+          if (lat == null || lon == null) return;
           const accuracy = pos.coords.accuracy ?? null;
-          const heading = (window as unknown as { _lastHeading?: number })._lastHeading ?? null;
-          send({
-            streamerId: user.id,
-            lat,
-            lon,
-            heading,
-            accuracy,
-            ts: Date.now(),
-            isLive: streamStatusRef.current.isLive,
-          });
+          const heading = deviceHeading.heading ?? null;
+          fetch("/api/streamer-telemetry", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ lat, lon, heading, accuracy }),
+          }).catch(() => {});
         },
         () => {},
         { enableHighAccuracy: true }
       );
-    }, 500);
+    }, TELEMETRY_PUBLISH_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [isStreamer, user.id]);
+  }, [isStreamer, deviceHeading.heading]);
 
   const onDataReceived = useCallback((msg: RTMessage) => {
     if (msg.type === "stream:status") {
@@ -326,9 +300,9 @@ export default function HUDClient({ user, googleMapsApiKey = "" }: { user: AuthU
               <span className="bg-black/70 text-white px-2 py-1 rounded">
                 Streamer: {streamStatus.activeStreamerUserId.slice(0, 8)}…
               </span>
-              {telemetryReceivedAt > 0 && bannerNow > 0 && (
+              {streamerTelemetry.updatedAt != null && bannerNow > 0 && (
                 <span className="text-white/90">
-                  {Math.round((bannerNow - telemetryReceivedAt) / 1000)}s ago
+                  {Math.round((bannerNow - streamerTelemetry.updatedAt) / 1000)}s ago
                 </span>
               )}
               {streamStatus.isLive && (
@@ -346,21 +320,21 @@ export default function HUDClient({ user, googleMapsApiKey = "" }: { user: AuthU
         />
       </div>
       <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20">
-        <CompassWidget />
+        <CompassWidget heading={streamerTelemetry.heading} />
       </div>
       <div className="absolute top-4 right-4 z-20 w-48">
         <LocalInfoWidget
-          lat={streamerTelemetry?.lat ?? null}
-          lon={streamerTelemetry?.lon ?? null}
+          lat={streamerTelemetry.lat}
+          lon={streamerTelemetry.lon}
           stale={telemetryStale}
         />
       </div>
       <div className="absolute bottom-4 right-4 z-20 w-64 h-48">
         <MapWidget
-          lat={streamerTelemetry?.lat ?? null}
-          lon={streamerTelemetry?.lon ?? null}
-          heading={streamerTelemetry?.heading ?? null}
-          accuracy={streamerTelemetry?.accuracy ?? null}
+          lat={streamerTelemetry.lat}
+          lon={streamerTelemetry.lon}
+          heading={streamerTelemetry.heading}
+          accuracy={streamerTelemetry.accuracy}
           stale={telemetryStale}
           googleMapsApiKey={googleMapsApiKey}
         />

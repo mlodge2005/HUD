@@ -127,3 +127,14 @@ model UserCalendarIntegration {
 
   @@map("user_calendar_integrations")
 }
+
+model StreamerTelemetry {
+  streamerId String   @id @map("streamer_id") @db.Text
+  lat        Float
+  lon        Float
+  heading    Float?
+  accuracy   Float?
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@map("streamer_telemetry")
+}
