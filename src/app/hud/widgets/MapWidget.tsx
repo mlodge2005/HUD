@@ -76,11 +76,8 @@ export default function MapWidget({
   const lat = latProp ?? centerLat ?? null;
   const lon = lonProp ?? centerLon ?? null;
 
-  // Rotation calibration:
-  // We assume incoming heading uses: 0°=North, 90°=East, increasing clockwise.
-  // If arrow is off by 90°: try rotOffset=90 or rotOffset=-90 (i.e. rotation = (heading + 90) % 360).
-  // If mirrored: try rotInvert=1 and optionally rotOffset=90 (i.e. (360 - heading + 90) % 360).
-  // In dev: /hud?rotOffset=-90 | /hud?rotOffset=90 | /hud?rotInvert=1
+  // Rotation calibration: default 0. Calibrate in dev with:
+  // /hud?rotOffset=90 or /hud?rotOffset=-90 and optionally /hud?rotInvert=1
   const rotOffset = isDev ? (Number(searchParams.get("rotOffset")) || 0) : 0;
   const rotInvert = isDev && searchParams.get("rotInvert") === "1";
 
@@ -165,7 +162,7 @@ export default function MapWidget({
         strokeColor: "#fff",
         strokeWeight: 2,
         rotation: rot,
-        anchor: new g.Point(0, 2),
+        // Let Google handle the anchor; forcing one often makes rotation look "off".
       };
       const marker = new g.Marker({
         position: center,
@@ -225,7 +222,7 @@ export default function MapWidget({
         strokeColor: "#fff",
         strokeWeight: 2,
         rotation: rot,
-        anchor: new g.Point(0, 2),
+        // Let Google handle the anchor; forcing one often makes rotation look "off".
       };
       markerRef.current.setIcon(newIcon);
       if (isDev) console.debug("[map] marker updated");

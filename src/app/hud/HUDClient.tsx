@@ -84,9 +84,9 @@ export default function HUDClient({ user, googleMapsApiKey = "" }: { user: AuthU
 
   const isStreamer = streamStatus.activeStreamerUserId === user.id;
   const sharedHeading = streamerTelemetry?.heading ?? null;
-  const headingForCompass = isStreamer
-    ? (sharedHeading ?? localHeading.heading ?? null)
-    : sharedHeading;
+  // Viewers should ONLY see streamer heading (telemetry). No viewer-local fallback.
+  // Streamer can fallback locally while telemetry warms up.
+  const headingForCompass = isStreamer ? (sharedHeading ?? localHeading.heading ?? null) : sharedHeading;
   const streamStatusRef = useRef(streamStatus);
   streamStatusRef.current = streamStatus;
 
@@ -341,6 +341,27 @@ export default function HUDClient({ user, googleMapsApiKey = "" }: { user: AuthU
       {liveKitConfigured === false && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-amber-600 text-white px-4 py-2 rounded text-sm">
           Streaming not configured (set LIVEKIT_* env vars)
+        </div>
+      )}
+
+      {/* Streamer-only: iOS requires a user gesture to enable compass. Without this, viewers will NEVER get heading. */}
+      {isStreamer && localHeading.needsPermission && localHeading.permissionState !== "granted" && (
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30">
+          <button
+            type="button"
+            className="rounded bg-white/10 px-3 py-2 text-sm text-white hover:bg-white/20"
+            onClick={() => localHeading.requestPermission()}
+          >
+            Enable Compass
+          </button>
+        </div>
+      )}
+
+      {/* DEV ONLY: lightweight telemetry sanity check (so you don't need mobile devtools) */}
+      {process.env.NODE_ENV !== "production" && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 text-xs text-white/70">
+          telemetry heading: {sharedHeading ?? "null"} | local heading: {localHeading.heading ?? "null"} | updatedAt:{" "}
+          {streamerTelemetry?.updatedAt ?? "null"}
         </div>
       )}
 
