@@ -339,7 +339,7 @@ export default function HUDClient({ user, googleMapsApiKey = "" }: { user: AuthU
         </div>
       )}
 
-      <div className="absolute top-4 left-4 z-20 w-48">
+      <div className="absolute top-4 left-4 z-30 w-48">
         <CalendarWidget
           activeStreamerUserId={streamStatus.activeStreamerUserId}
           refreshKey={calendarRefreshKey}
@@ -367,7 +367,7 @@ export default function HUDClient({ user, googleMapsApiKey = "" }: { user: AuthU
         />
       </div>
       <MapsDiagnosticsPanel />
-      <div className="absolute bottom-4 left-4 top-4 z-20 w-80 h-full max-h-full overflow-hidden flex flex-col">
+      <div className="absolute bottom-4 left-4 z-20 w-80 max-h-[45vh] overflow-hidden flex flex-col rounded-xl bg-black/40 backdrop-blur border border-white/10">
         <ChatWidget user={user} />
       </div>
 
