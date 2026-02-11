@@ -78,9 +78,9 @@ export default function MapWidget({
 
   // Rotation calibration:
   // We assume incoming heading uses: 0°=North, 90°=East, increasing clockwise.
-  // If your device/browser differs, calibrate in dev:
-  //   /hud?rotOffset=-90     (or +90)
-  //   /hud?rotInvert=1       (flip direction)
+  // If arrow is off by 90°: try rotOffset=90 or rotOffset=-90 (i.e. rotation = (heading + 90) % 360).
+  // If mirrored: try rotInvert=1 and optionally rotOffset=90 (i.e. (360 - heading + 90) % 360).
+  // In dev: /hud?rotOffset=-90 | /hud?rotOffset=90 | /hud?rotInvert=1
   const rotOffset = isDev ? (Number(searchParams.get("rotOffset")) || 0) : 0;
   const rotInvert = isDev && searchParams.get("rotInvert") === "1";
 

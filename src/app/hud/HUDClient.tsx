@@ -144,6 +144,9 @@ export default function HUDClient({ user, googleMapsApiKey = "" }: { user: AuthU
                 accuracy,
               };
               if (heading != null) payload.heading = heading;
+              if (typeof console !== "undefined" && console.debug) {
+                console.debug("[telemetry] POST payload", payload);
+              }
               const res = await fetch("/api/streamer-telemetry", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },

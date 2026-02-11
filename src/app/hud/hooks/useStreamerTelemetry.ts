@@ -80,7 +80,7 @@ export function useStreamerTelemetry(streamerId: string | null): {
         },
         (payload) => {
           if (isDev && typeof console !== "undefined" && console.debug) {
-            console.debug("[telemetry] update", payload.new);
+            console.debug("[telemetry] realtime event", payload);
           }
           const r = payload.new as Record<string, unknown> | null;
           if (r && typeof r === "object") {
