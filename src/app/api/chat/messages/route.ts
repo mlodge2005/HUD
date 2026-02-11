@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import Ably from "ably";
 
-const LATEST_LIMIT = 50;
+const DEFAULT_LIMIT = 50;
+const MAX_LIMIT = 100;
 
-/** GET: latest 50 chat messages (asc order for display). */
-export async function GET() {
+/** GET: latest chat messages (asc order for display). Query: ?limit=50 */
+export async function GET(request: Request) {
   try {
     await requireAuth();
   } catch (e: unknown) {
@@ -14,8 +14,15 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: err.statusCode ?? 401 });
   }
 
+  const { searchParams } = new URL(request.url);
+  const limitParam = searchParams.get("limit");
+  const limit = Math.min(
+    limitParam ? Math.max(1, Number(limitParam)) : DEFAULT_LIMIT,
+    MAX_LIMIT
+  );
+
   const messages = await prisma.chatMessage.findMany({
-    take: LATEST_LIMIT,
+    take: limit,
     orderBy: { createdAt: "desc" },
     include: {
       user: {
@@ -28,13 +35,14 @@ export async function GET() {
     id: m.id,
     text: m.text,
     createdAt: m.createdAt.toISOString(),
+    authorDisplayName: m.user.displayName,
     user: { id: m.user.id, displayName: m.user.displayName },
   }));
 
   return NextResponse.json({ messages: items });
 }
 
-/** POST: create message, persist to DB, publish to Ably hud:chat. */
+/** POST: create message, persist to DB. Client broadcasts via Supabase Realtime. */
 export async function POST(request: Request) {
   let user;
   try {
@@ -65,28 +73,11 @@ export async function POST(request: Request) {
     },
   });
 
-  const payload = {
-    id: created.id,
-    text: created.text,
-    createdAt: created.createdAt.toISOString(),
-    user: { id: created.user.id, displayName: created.user.displayName },
-  };
-
-  const key = process.env.ABLY_API_KEY;
-  if (key) {
-    try {
-      const rest = new Ably.Rest({ key });
-      await rest.channels.get("hud:chat").publish("message", payload);
-    } catch (ablyErr) {
-      console.error("[chat] Ably publish failed:", ablyErr);
-      // Message is already in DB; client can refetch or we could retry
-    }
-  }
-
   return NextResponse.json({
     id: created.id,
     text: created.text,
     createdAt: created.createdAt.toISOString(),
+    authorDisplayName: created.user.displayName,
     user: { id: created.user.id, displayName: created.user.displayName },
   });
 }

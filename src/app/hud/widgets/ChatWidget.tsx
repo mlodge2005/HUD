@@ -1,90 +1,105 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { createAblyClient } from "@/lib/ablyClient";
+import { createSupabaseClient } from "@/lib/supabase/client";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 
-type AuthUser = { id: string; username: string; displayName: string };
+type AuthUser = { id: string; username: string; displayName: string; role: string };
 
 type Message = {
   id: string;
   text: string;
   createdAt: string;
+  authorDisplayName?: string;
   user: { id: string; displayName: string };
 };
 
-type ListUser = { id: string; displayName: string; role: string; disabled: boolean };
+type OnlineUser = { userId: string; displayName: string; role: string };
 
 const RATE_LIMIT_MS = 1000;
 const BURST = 5;
+const CHANNEL_NAME = "hud-global";
 
 export default function ChatWidget({ user }: { user: AuthUser }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [chatCollapsed, setChatCollapsed] = useState(false);
   const [usersCollapsed, setUsersCollapsed] = useState(true);
-  const [usersList, setUsersList] = useState<ListUser[]>([]);
-  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
+  const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const lastSendRef = useRef(0);
   const burstRef = useRef(0);
-  const ablyRef = useRef<ReturnType<typeof createAblyClient> | null>(null);
+  const messageIdsRef = useRef<Set<string>>(new Set());
+  const channelRef = useRef<RealtimeChannel | null>(null);
 
   // Initial messages from DB
   useEffect(() => {
-    fetch("/api/chat/messages")
+    fetch("/api/chat/messages?limit=50", { credentials: "include" })
       .then((r) => r.json())
       .then((data) => {
-        if (data.messages) setMessages(data.messages);
+        if (data.messages) {
+          setMessages(data.messages);
+          data.messages.forEach((m: Message) => messageIdsRef.current.add(m.id));
+        }
       })
       .catch(() => {});
   }, []);
 
-  // Users list (for "Users online/total" panel)
+  // Supabase Realtime: presence + broadcast
   useEffect(() => {
-    fetch("/api/users/list")
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.users) setUsersList(data.users);
-      })
-      .catch(() => {});
-  }, []);
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!url || !anonKey) return;
 
-  // Ably: connect, subscribe to chat, presence enter/leave
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const client = createAblyClient();
-    ablyRef.current = client;
-
-    const chatChannel = client.channels.get("hud:chat");
-    const presenceChannel = client.channels.get("hud:presence");
-
-    chatChannel.subscribe("message", (msg) => {
-      const payload = msg.data as Message;
-      if (payload?.id) {
-        setMessages((prev) => [...prev.slice(-99), payload]);
-      }
+    const supabase = createSupabaseClient();
+    const channel = supabase.channel(CHANNEL_NAME, {
+      config: {
+        presence: { key: user.id },
+        broadcast: { self: true },
+      },
     });
 
-    const updatePresence = () => {
-      presenceChannel.presence.get().then((members) => {
-        setOnlineUserIds(new Set(members.map((m) => m.clientId)));
+    channel
+      .on("presence", { event: "sync" }, () => {
+        const state = channel.presenceState() as Record<string, Array<{ userId?: string; displayName?: string; role?: string }>>;
+        const list: OnlineUser[] = [];
+        Object.values(state).forEach((presences) => {
+          presences.forEach((p) => {
+            if (p?.userId && p?.displayName) {
+              list.push({
+                userId: p.userId,
+                displayName: p.displayName,
+                role: p.role ?? "user",
+              });
+            }
+          });
+        });
+        setOnlineUsers(list);
+      })
+      .on("broadcast", { event: "chat:message" }, ({ payload }) => {
+        const msg = payload as Message;
+        if (!msg?.id || messageIdsRef.current.has(msg.id)) return;
+        messageIdsRef.current.add(msg.id);
+        setMessages((prev) => [...prev.slice(-99), msg]);
+      })
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          await channel.track({
+            userId: user.id,
+            displayName: user.displayName,
+            role: user.role,
+          });
+        }
       });
-    };
 
-    presenceChannel.presence.subscribe("enter", updatePresence);
-    presenceChannel.presence.subscribe("leave", updatePresence);
-    presenceChannel.presence.subscribe("update", updatePresence);
-
-    presenceChannel.presence.enter({ displayName: user.displayName }).then(updatePresence);
+    channelRef.current = channel;
 
     return () => {
-      presenceChannel.presence.leave().catch(() => {});
-      presenceChannel.presence.unsubscribe();
-      chatChannel.unsubscribe();
-      client.close();
-      ablyRef.current = null;
+      channel.untrack().catch(() => {});
+      supabase.removeChannel(channel);
+      channelRef.current = null;
     };
-  }, [user.displayName]);
+  }, [user.id, user.displayName, user.role]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -102,45 +117,54 @@ export default function ChatWidget({ user }: { user: AuthUser }) {
     fetch("/api/chat/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ text }),
     })
       .then((r) => r.json())
       .then((data) => {
         if (data.id) {
-          setMessages((prev) => [...prev.slice(-99), data]);
+          const message: Message = {
+            id: data.id,
+            text: data.text,
+            createdAt: data.createdAt,
+            authorDisplayName: data.authorDisplayName ?? data.user?.displayName,
+            user: data.user ?? { id: user.id, displayName: user.displayName },
+          };
+          messageIdsRef.current.add(message.id);
+          setMessages((prev) => [...prev.slice(-99), message]);
           setInput("");
+          const ch = channelRef.current;
+          if (ch) {
+            ch.send({ type: "broadcast", event: "chat:message", payload: message });
+          }
         }
       })
       .catch(() => {});
   }
 
-  const onlineCount = onlineUserIds.size;
-  const totalCount = usersList.length;
+  const displayName = (m: Message) => m.authorDisplayName ?? m.user?.displayName ?? "?";
 
   return (
     <div className="bg-black/60 text-white rounded-lg overflow-hidden flex flex-col max-h-96 w-80">
-      {/* Users Online — collapsible above chat */}
+      {/* Online Users — collapsible above chat */}
       <div>
         <button
           type="button"
           onClick={() => setUsersCollapsed(!usersCollapsed)}
           className="w-full p-2 text-left font-medium text-sm flex justify-between items-center"
         >
-          <span>Users ({onlineCount}/{totalCount})</span>
+          <span>Online ({onlineUsers.length})</span>
           <span>{usersCollapsed ? "▼" : "▲"}</span>
         </button>
         {!usersCollapsed && (
           <div className="max-h-32 overflow-y-auto p-2 border-b border-white/20 space-y-1">
-            {usersList.map((u) => (
-              <div key={u.id} className="flex items-center gap-2 text-sm">
-                <span
-                  className={`w-2 h-2 rounded-full shrink-0 ${
-                    onlineUserIds.has(u.id) ? "bg-green-500" : "bg-gray-500"
-                  }`}
-                  title={onlineUserIds.has(u.id) ? "Online" : "Offline"}
-                />
+            {onlineUsers.map((u) => (
+              <div key={u.userId} className="flex items-center gap-2 text-sm">
+                <span className="w-2 h-2 rounded-full shrink-0 bg-green-500" title="Online" />
                 <span className="truncate">{u.displayName}</span>
-                {u.disabled && <span className="text-gray-500 text-xs">(disabled)</span>}
+                {u.role === "admin" && (
+                  <span className="shrink-0 text-xs bg-amber-600 px-1 rounded">ADMIN</span>
+                )}
               </div>
             ))}
           </div>
@@ -161,7 +185,15 @@ export default function ChatWidget({ user }: { user: AuthUser }) {
           <div className="overflow-y-auto flex-1 p-2 space-y-1 min-h-24 max-h-48">
             {messages.map((m) => (
               <div key={m.id} className="text-sm">
-                <span className="text-gray-400">{m.user.displayName}:</span> {m.text}
+                <span className="text-gray-400">{displayName(m)}</span>
+                <span className="text-gray-500 text-xs ml-1">
+                  {new Date(m.createdAt).toLocaleTimeString(undefined, {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </span>
+                <br />
+                <span>{m.text}</span>
               </div>
             ))}
             <div ref={bottomRef} />

@@ -1,14 +1,15 @@
 # HUD WebApp MVP
 
-Production-grade MVP for a streamer/viewer HUD with admin user management, LiveKit streaming, real-time chat (via LiveKit data channels), and telemetry overlays. **Vercel-compatible** (no custom server; serverless-friendly).
+Production-grade MVP for a streamer/viewer HUD with admin user management, LiveKit streaming, real-time chat (via Supabase Realtime), and telemetry overlays. **Vercel-compatible** (no custom server; serverless-friendly).
 
 ## Stack
 
 - **Next.js 15** (App Router) + TypeScript
 - **PostgreSQL** + Prisma (use Neon, Supabase, or any Postgres for Vercel)
 - **Cookie-based sessions** (httpOnly)
-- **RBAC** (admin / user; streamer is session state)
-- **LiveKit** for WebRTC SFU streaming and **data channels** (chat + stream control)
+- **RBAC** (admin / user; streamer is separate from admin — admin is `user.role` only)
+- **LiveKit** for WebRTC SFU streaming and data channels (stream control / handoff)
+- **Supabase Realtime** for global chat (broadcast) and online users (presence)
 - No Socket.IO; no custom Node server
 
 ## Prerequisites
@@ -45,6 +46,14 @@ For streaming and realtime (chat, stream request/handoff):
 - `LIVEKIT_API_SECRET` — API secret
 
 If these are missing, the HUD shows “Streaming not configured” but auth and admin still work.
+
+**Supabase Realtime (global chat + online users):**  
+
+- `NEXT_PUBLIC_SUPABASE_URL` — Supabase project URL (e.g. `https://xxxx.supabase.co`)
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` — Supabase anon (publishable) key; safe for client
+- `SUPABASE_SERVICE_ROLE_KEY` — Server-only; never expose to client (optional for chat; use if you add server-side Realtime later)
+
+Chat messages are stored in your existing Postgres `chat_messages` table (Prisma); Supabase is used only as the realtime transport (broadcast + presence). No Supabase Postgres migration required.
 
 Optional:
 
@@ -91,7 +100,7 @@ App is at **http://localhost:3000** (or `PORT` if set).
 - Deploy as a standard Next.js app. All APIs are Route Handlers; no custom server or WebSockets on the server.
 - **Database:** Use a hosted Postgres (e.g. [Neon](https://neon.tech), [Supabase](https://supabase.com)) and set `DATABASE_URL` in Vercel.
 - **LiveKit:** Must be hosted (e.g. [LiveKit Cloud](https://cloud.livekit.io)) or self-hosted elsewhere. Set `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` in Vercel.
-- Realtime (chat, stream request/handoff) uses **LiveKit data channels** in the same room as the video stream; no separate WebSocket server needed.
+- **Chat and online users** use **Supabase Realtime** (broadcast + presence on channel `hud-global`). **Stream request/handoff** still use LiveKit data channels in the same room as the video stream. No Socket.IO or custom WebSocket server.
 
 ## Scripts
 
@@ -111,7 +120,7 @@ App is at **http://localhost:3000** (or `PORT` if set).
 2. **User** logs in → if `must_change_password`, redirected to `/change-password`; then can use `/hud`.
 3. **HUD** (`/hud`): Everyone joins the LiveKit room with a **viewer** token (subscribe + publish data). If no active streamer, “Adopt Stream Identity” sets the user as streamer (REST + broadcast `stream:status` via LiveKit data). Viewers can “Request to Stream” (REST + broadcast `stream:request`); current streamer (or admin) Accept/Decline; accept triggers handoff (REST + `stream:handoff` / `stream:status`). **Lazy expiry:** if the streamer stops sending heartbeats for 10s, the next call to any stream API clears the streamer (no background timer).
 4. **Streamer** on HUD: “Go Live” gets a **streamer** token and reconnects to publish video; “Stop” unpublishes and reconnects as viewer. Telemetry (GPS + heading) is sent to the server; widgets (compass, map, local info) read from REST.
-5. **Chat** is global over LiveKit data (reliable); rate limit ~1 msg/s, burst 5 (client-side).
+5. **Chat** is global: messages are persisted in Postgres via `POST /api/chat/messages`, then broadcast to all clients over Supabase Realtime. **Online users** are shown via Supabase presence on the same channel. Rate limit ~1 msg/s, burst 5 (client-side).
 
 ## Routes
 
@@ -134,8 +143,10 @@ App is at **http://localhost:3000** (or `PORT` if set).
 - **LiveKit:** `POST /api/livekit/token/viewer`, `POST /api/livekit/token/streamer`
 - **Telemetry:** `POST /api/telemetry/update`, `GET /api/telemetry/latest`
 - **Widgets:** `GET /api/widgets/calendar`, `GET /api/widgets/reverse-geocode`, `GET /api/widgets/weather`
+- **Chat:** `GET /api/chat/messages?limit=50`, `POST /api/chat/messages` (body: `{ text }`)
+- **Users:** `GET /api/users/list` (auth required)
 
-Realtime is via **LiveKit data messages** in room `hud-room` (no Socket.IO).
+**Realtime:** Chat and presence use **Supabase Realtime** (channel `hud-global`). Stream control and handoff use **LiveKit data messages** in room `hud-room`. No Socket.IO.
 
 ## Security
 
@@ -150,6 +161,6 @@ Realtime is via **LiveKit data messages** in room `hud-room` (no Socket.IO).
 - [x] Login/logout and auth_events work
 - [x] Admin pages work
 - [x] `/hud` loads; connects to LiveKit when configured; shows “Streaming not configured” when env vars missing
-- [x] Chat over LiveKit data across clients
+- [x] Chat over Supabase Realtime (persisted in Postgres); online users via presence
 - [x] Stream request to streamer; accept triggers handoff; old streamer stops
 - [x] Lazy expiry: after ~10s without heartbeats, next stream API call clears streamer
