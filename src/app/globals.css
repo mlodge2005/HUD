@@ -14,7 +14,20 @@
   }
 }
 
+html,
+body,
+#__next {
+  height: 100%;
+}
+
 body {
+  margin: 0;
+  overflow: hidden;
   color: var(--foreground);
   background: var(--background);
+}
+
+/* HUD viewport: mobile-safe dynamic viewport */
+.hud-root {
+  min-height: 100dvh;
 }

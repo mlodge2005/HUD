@@ -145,9 +145,9 @@ export default function ChatWidget({ user }: { user: AuthUser }) {
   const displayName = (m: Message) => m.authorDisplayName ?? m.user?.displayName ?? "?";
 
   return (
-    <div className="bg-black/60 text-white rounded-lg overflow-hidden flex flex-col max-h-96 w-80">
+    <div className="h-full max-h-full overflow-hidden flex flex-col bg-black/60 text-white rounded-lg w-80">
       {/* Online Users — collapsible above chat */}
-      <div>
+      <div className="shrink-0">
         <button
           type="button"
           onClick={() => setUsersCollapsed(!usersCollapsed)}
@@ -175,14 +175,14 @@ export default function ChatWidget({ user }: { user: AuthUser }) {
       <button
         type="button"
         onClick={() => setChatCollapsed(!chatCollapsed)}
-        className="p-2 text-left font-medium text-sm flex justify-between"
+        className="shrink-0 p-2 text-left font-medium text-sm flex justify-between"
       >
         Chat
         <span>{chatCollapsed ? "▼" : "▲"}</span>
       </button>
       {!chatCollapsed && (
         <>
-          <div className="overflow-y-auto flex-1 p-2 space-y-1 min-h-24 max-h-48">
+          <div className="flex-1 overflow-y-auto p-2 space-y-1 min-h-0">
             {messages.map((m) => (
               <div key={m.id} className="text-sm">
                 <span className="text-gray-400">{displayName(m)}</span>
@@ -198,7 +198,7 @@ export default function ChatWidget({ user }: { user: AuthUser }) {
             ))}
             <div ref={bottomRef} />
           </div>
-          <div className="p-2 flex gap-2 border-t border-white/20">
+          <div className="shrink-0 p-2 flex gap-2 border-t border-white/20">
             <input
               type="text"
               value={input}

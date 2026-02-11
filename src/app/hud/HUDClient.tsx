@@ -280,7 +280,8 @@ export default function HUDClient({ user, googleMapsApiKey = "" }: { user: AuthU
 
   return (
     <MapsDiagnosticsProvider>
-      <div className="fixed inset-0 bg-black overflow-hidden">
+      <div className="hud-root flex min-h-screen w-screen flex-col overflow-hidden bg-black">
+        <div className="flex-1 relative overflow-hidden">
         <HUDVideo
         isStreamer={isStreamer}
         userId={user.id}
@@ -366,7 +367,7 @@ export default function HUDClient({ user, googleMapsApiKey = "" }: { user: AuthU
         />
       </div>
       <MapsDiagnosticsPanel />
-      <div className="absolute bottom-4 left-4 z-20 w-80 max-h-64">
+      <div className="absolute bottom-4 left-4 top-4 z-20 w-80 h-full max-h-full overflow-hidden flex flex-col">
         <ChatWidget user={user} />
       </div>
 
@@ -436,6 +437,7 @@ export default function HUDClient({ user, googleMapsApiKey = "" }: { user: AuthU
           </div>
         </div>
       )}
+        </div>
       </div>
     </MapsDiagnosticsProvider>
   );
