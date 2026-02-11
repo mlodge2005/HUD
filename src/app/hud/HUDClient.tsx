@@ -346,10 +346,7 @@ export default function HUDClient({ user, googleMapsApiKey = "" }: { user: AuthU
         />
       </div>
       <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20">
-        <CompassWidget
-          heading={streamerTelemetry?.heading ?? null}
-          stale={telemetryStale}
-        />
+        <CompassWidget />
       </div>
       <div className="absolute top-4 right-4 z-20 w-48">
         <LocalInfoWidget
@@ -362,6 +359,8 @@ export default function HUDClient({ user, googleMapsApiKey = "" }: { user: AuthU
         <MapWidget
           lat={streamerTelemetry?.lat ?? null}
           lon={streamerTelemetry?.lon ?? null}
+          heading={streamerTelemetry?.heading ?? null}
+          accuracy={streamerTelemetry?.accuracy ?? null}
           stale={telemetryStale}
           googleMapsApiKey={googleMapsApiKey}
         />
