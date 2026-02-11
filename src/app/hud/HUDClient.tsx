@@ -12,6 +12,7 @@ import MapWidget from "./widgets/MapWidget";
 import ChatWidget from "./widgets/ChatWidget";
 import { MapsDiagnosticsProvider } from "./widgets/MapsDiagnosticsContext";
 import { MapsDiagnosticsPanel } from "./widgets/MapsDiagnosticsPanel";
+import { TelemetryDiagnosticsPanel } from "./widgets/TelemetryDiagnosticsPanel";
 import {
   encodeRTMessage,
   type RTMessage,
@@ -60,10 +61,17 @@ export default function HUDClient({ user, googleMapsApiKey = "" }: { user: AuthU
   const [liveKitConfigured, setLiveKitConfigured] = useState<boolean | null>(null);
   const [calendarRefreshKey, setCalendarRefreshKey] = useState(0);
   const [bannerNow, setBannerNow] = useState(0);
+  const [lastPublishAt, setLastPublishAt] = useState<number | null>(null);
+  const [lastPublishStatus, setLastPublishStatus] = useState<string | null>(null);
+  const [lastPublishError, setLastPublishError] = useState<string | null>(null);
+  const [lastLocalLat, setLastLocalLat] = useState<number | null>(null);
+  const [lastLocalLon, setLastLocalLon] = useState<number | null>(null);
 
-  const streamerTelemetry = useStreamerTelemetry(streamStatus.activeStreamerUserId);
+  const { telemetry: streamerTelemetry, status: telemetryStatus } = useStreamerTelemetry(
+    streamStatus.activeStreamerUserId
+  );
   const deviceHeading = useDeviceHeading();
-  const telemetryReceivedAt = streamerTelemetry.updatedAt ?? 0;
+  const telemetryReceivedAt = streamerTelemetry?.updatedAt ?? 0;
   const telemetryStale = telemetryReceivedAt > 0 && Date.now() - telemetryReceivedAt > 10000;
 
   const isStreamer = streamStatus.activeStreamerUserId === user.id;
@@ -112,14 +120,40 @@ export default function HUDClient({ user, googleMapsApiKey = "" }: { user: AuthU
           const lat = pos.coords.latitude;
           const lon = pos.coords.longitude;
           if (lat == null || lon == null) return;
+          setLastLocalLat(lat);
+          setLastLocalLon(lon);
           const accuracy = pos.coords.accuracy ?? null;
           const heading = deviceHeading.heading ?? null;
-          fetch("/api/streamer-telemetry", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({ lat, lon, heading, accuracy }),
-          }).catch(() => {});
+          (async () => {
+            try {
+              const res = await fetch("/api/streamer-telemetry", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ lat, lon, heading, accuracy }),
+              });
+              setLastPublishAt(Date.now());
+              setLastPublishStatus(res.ok ? "ok" : `error ${res.status}`);
+              if (!res.ok) {
+                const text = await res.text();
+                const err = text || `HTTP ${res.status}`;
+                setLastPublishError(err);
+                if (typeof console !== "undefined" && console.error) {
+                  console.error("[telemetry] publish failed", res.status, text);
+                }
+              } else {
+                setLastPublishError(null);
+              }
+            } catch (e) {
+              setLastPublishAt(Date.now());
+              setLastPublishStatus("error");
+              const err = e instanceof Error ? e.message : String(e);
+              setLastPublishError(err);
+              if (typeof console !== "undefined" && console.error) {
+                console.error("[telemetry] publish error", e);
+              }
+            }
+          })();
         },
         () => {},
         { enableHighAccuracy: true }
@@ -300,9 +334,9 @@ export default function HUDClient({ user, googleMapsApiKey = "" }: { user: AuthU
               <span className="bg-black/70 text-white px-2 py-1 rounded">
                 Streamer: {streamStatus.activeStreamerUserId.slice(0, 8)}…
               </span>
-              {streamerTelemetry.updatedAt != null && bannerNow > 0 && (
+              {streamerTelemetry?.updatedAt != null && bannerNow > 0 && (
                 <span className="text-white/90">
-                  {Math.round((bannerNow - streamerTelemetry.updatedAt) / 1000)}s ago
+                  {Math.round((bannerNow - (streamerTelemetry?.updatedAt ?? 0)) / 1000)}s ago
                 </span>
               )}
               {streamStatus.isLive && (
@@ -320,26 +354,41 @@ export default function HUDClient({ user, googleMapsApiKey = "" }: { user: AuthU
         />
       </div>
       <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20">
-        <CompassWidget heading={streamerTelemetry.heading} />
+        <CompassWidget
+          heading={
+            streamerTelemetry?.heading ??
+            (isStreamer ? deviceHeading.heading : null)
+          }
+        />
       </div>
       <div className="absolute top-4 right-4 z-20 w-48">
         <LocalInfoWidget
-          lat={streamerTelemetry.lat}
-          lon={streamerTelemetry.lon}
+          lat={streamerTelemetry?.lat ?? (isStreamer ? lastLocalLat : null)}
+          lon={streamerTelemetry?.lon ?? (isStreamer ? lastLocalLon : null)}
           stale={telemetryStale}
         />
       </div>
       <div className="absolute bottom-4 right-4 z-20 w-64 h-48">
         <MapWidget
-          lat={streamerTelemetry.lat}
-          lon={streamerTelemetry.lon}
-          heading={streamerTelemetry.heading}
-          accuracy={streamerTelemetry.accuracy}
+          lat={streamerTelemetry?.lat ?? (isStreamer ? lastLocalLat : null)}
+          lon={streamerTelemetry?.lon ?? (isStreamer ? lastLocalLon : null)}
+          heading={streamerTelemetry?.heading ?? null}
+          accuracy={streamerTelemetry?.accuracy ?? null}
           stale={telemetryStale}
           googleMapsApiKey={googleMapsApiKey}
         />
       </div>
       <MapsDiagnosticsPanel />
+      <TelemetryDiagnosticsPanel
+        activeStreamerUserId={streamStatus.activeStreamerUserId}
+        isStreamer={isStreamer}
+        telemetryStatus={telemetryStatus}
+        lastPublishAt={lastPublishAt}
+        lastPublishStatus={lastPublishStatus}
+        lastPublishError={lastPublishError}
+        lastTelemetryAt={streamerTelemetry?.updatedAt ?? null}
+        telemetry={streamerTelemetry ?? null}
+      />
       <div className="absolute bottom-4 left-4 z-20 w-80 max-h-[45vh] overflow-hidden flex flex-col rounded-xl bg-black/40 backdrop-blur border border-white/10">
         <ChatWidget user={user} />
       </div>

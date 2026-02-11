@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
+const isDev = typeof process !== "undefined" && process.env.NODE_ENV !== "production";
+
 export type StreamerTelemetryState = {
   lat: number | null;
   lon: number | null;
@@ -10,6 +12,8 @@ export type StreamerTelemetryState = {
   accuracy: number | null;
   updatedAt: number | null;
 };
+
+export type StreamerTelemetryStatus = "no-streamer" | "subscribed";
 
 function rowToState(row: {
   lat?: number;
@@ -31,24 +35,26 @@ function rowToState(row: {
 
 /**
  * Fetch initial streamer_telemetry row and subscribe to Realtime changes.
- * Returns { lat, lon, heading, accuracy, updatedAt } for the given streamerId.
+ * If streamerId is falsy, returns { telemetry: null, status: 'no-streamer' } and does not call Supabase.
  */
-export function useStreamerTelemetry(streamerId: string | null) {
-  const [state, setState] = useState<StreamerTelemetryState>({
-    lat: null,
-    lon: null,
-    heading: null,
-    accuracy: null,
-    updatedAt: null,
-  });
+export function useStreamerTelemetry(streamerId: string | null): {
+  telemetry: StreamerTelemetryState | null;
+  status: StreamerTelemetryStatus;
+} {
+  const [telemetry, setTelemetry] = useState<StreamerTelemetryState | null>(null);
+  const [status, setStatus] = useState<StreamerTelemetryStatus>("no-streamer");
 
   useEffect(() => {
     if (!streamerId) {
-      setState({ lat: null, lon: null, heading: null, accuracy: null, updatedAt: null });
+      setTelemetry(null);
+      setStatus("no-streamer");
       return;
     }
 
     const supabase = getSupabaseBrowserClient();
+    if (isDev && typeof console !== "undefined" && console.debug) {
+      console.debug("[telemetry] subscribed", streamerId);
+    }
 
     const fetchInitial = async () => {
       const { data } = await supabase
@@ -56,10 +62,11 @@ export function useStreamerTelemetry(streamerId: string | null) {
         .select("lat, lon, heading, accuracy, updated_at")
         .eq("streamer_id", streamerId)
         .maybeSingle();
-      setState(rowToState(data));
+      setTelemetry(rowToState(data));
     };
 
     fetchInitial();
+    setStatus("subscribed");
 
     const channel = supabase
       .channel(`streamer_telemetry:${streamerId}`)
@@ -72,9 +79,12 @@ export function useStreamerTelemetry(streamerId: string | null) {
           event: "*",
         },
         (payload) => {
+          if (isDev && typeof console !== "undefined" && console.debug) {
+            console.debug("[telemetry] update", payload.new);
+          }
           const r = payload.new as Record<string, unknown> | null;
           if (r && typeof r === "object") {
-            setState(
+            setTelemetry(
               rowToState({
                 lat: r.lat as number,
                 lon: r.lon as number,
@@ -93,5 +103,5 @@ export function useStreamerTelemetry(streamerId: string | null) {
     };
   }, [streamerId]);
 
-  return state;
+  return { telemetry, status };
 }
