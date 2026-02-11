@@ -70,11 +70,15 @@ export default function HUDClient({ user, googleMapsApiKey = "" }: { user: AuthU
   const { telemetry: streamerTelemetry, status: telemetryStatus } = useStreamerTelemetry(
     streamStatus.activeStreamerUserId
   );
-  const deviceHeading = useDeviceHeading();
+  const localHeading = useDeviceHeading();
   const telemetryReceivedAt = streamerTelemetry?.updatedAt ?? 0;
   const telemetryStale = telemetryReceivedAt > 0 && Date.now() - telemetryReceivedAt > 10000;
 
   const isStreamer = streamStatus.activeStreamerUserId === user.id;
+  const sharedHeading = streamerTelemetry?.heading ?? null;
+  const headingForCompass = isStreamer
+    ? (sharedHeading ?? localHeading.heading ?? null)
+    : sharedHeading;
   const streamStatusRef = useRef(streamStatus);
   streamStatusRef.current = streamStatus;
 
@@ -123,7 +127,7 @@ export default function HUDClient({ user, googleMapsApiKey = "" }: { user: AuthU
           setLastLocalLat(lat);
           setLastLocalLon(lon);
           const accuracy = pos.coords.accuracy ?? null;
-          const heading = deviceHeading.heading ?? null;
+          const heading = localHeading.heading ?? null;
           (async () => {
             try {
               const res = await fetch("/api/streamer-telemetry", {
@@ -160,7 +164,7 @@ export default function HUDClient({ user, googleMapsApiKey = "" }: { user: AuthU
       );
     }, TELEMETRY_PUBLISH_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [isStreamer, deviceHeading.heading]);
+  }, [isStreamer, localHeading.heading]);
 
   const onDataReceived = useCallback((msg: RTMessage) => {
     if (msg.type === "stream:status") {
@@ -354,12 +358,7 @@ export default function HUDClient({ user, googleMapsApiKey = "" }: { user: AuthU
         />
       </div>
       <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20">
-        <CompassWidget
-          heading={
-            streamerTelemetry?.heading ??
-            (isStreamer ? deviceHeading.heading : null)
-          }
-        />
+        <CompassWidget heading={headingForCompass} isStreamer={isStreamer} />
       </div>
       <div className="absolute top-4 right-4 z-20 w-48">
         <LocalInfoWidget

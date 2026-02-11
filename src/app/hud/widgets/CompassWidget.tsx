@@ -1,14 +1,16 @@
 "use client";
 
 type Props = {
-  /** Streamer heading in degrees (0–359) from telemetry. */
+  /** Heading in degrees (0–359): streamer telemetry or (streamer only) local device fallback. */
   heading: number | null;
+  /** True when current user is the active streamer (for fallback behavior in parent). */
+  isStreamer?: boolean;
 };
 
-export default function CompassWidget({ heading }: Props) {
+export default function CompassWidget({ heading, isStreamer }: Props) {
   if (heading == null) {
     return (
-      <div className="bg-black/60 text-white rounded-lg px-4 py-3 text-center">
+      <div className="bg-black/60 text-white rounded-lg px-4 py-3 text-center" data-is-streamer={isStreamer}>
         <div className="text-sm text-gray-300">Heading</div>
         <div className="text-xl font-mono text-gray-400 mt-0.5">N/A</div>
       </div>
@@ -18,7 +20,7 @@ export default function CompassWidget({ heading }: Props) {
   const rotation = heading; // 0 = North, clockwise
 
   return (
-    <div className="bg-black/60 text-white rounded-lg p-3 flex flex-col items-center">
+    <div className="bg-black/60 text-white rounded-lg p-3 flex flex-col items-center" data-is-streamer={isStreamer}>
       <div className="text-xs text-gray-300 mb-1">Heading</div>
       <div className="relative w-20 h-20 rounded-full border-2 border-white/60 flex items-center justify-center bg-black/40">
         {/* Cardinal labels on the ring */}

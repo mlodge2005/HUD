@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useMapsDiagnostics } from "./MapsDiagnosticsContext";
 
 const MAPS_SCRIPT_BASE = "https://maps.googleapis.com/maps/api/js";
@@ -18,6 +19,7 @@ declare global {
         LatLng: new (lat: number, lng: number) => { lat: () => number; lng: () => number };
         Marker: new (opts?: unknown) => GoogleMarkerInstance;
         Circle: new (opts?: unknown) => GoogleCircleInstance;
+        Point: new (x: number, y: number) => { x: number; y: number };
         SymbolPath: { FORWARD_CLOSED_ARROW: unknown };
         event: { clearInstanceListeners: (obj: unknown) => void };
       };
@@ -63,6 +65,7 @@ export default function MapWidget({
   googleMapsApiKey: keyProp = "",
 }: MapWidgetProps) {
   const { state: diag, setDiagnostics } = useMapsDiagnostics();
+  const searchParams = useSearchParams();
   const scriptLoadedRef = useRef(false);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<GoogleMapInstance | null>(null);
@@ -72,6 +75,16 @@ export default function MapWidget({
 
   const lat = latProp ?? centerLat ?? null;
   const lon = lonProp ?? centerLon ?? null;
+
+  const rotOffset = isDev ? (Number(searchParams.get("rotOffset")) || -90) : -90;
+  const rotInvert = isDev && searchParams.get("rotInvert") === "1";
+
+  function calibratedRotation(rawHeading: number | null): number {
+    const raw = rawHeading ?? 0;
+    const INVERT = rotInvert;
+    const OFFSET = rotOffset;
+    return ((INVERT ? (360 - raw) : raw) + OFFSET + 360) % 360;
+  }
 
   const key = typeof keyProp === "string" ? keyProp : "";
   const keySet = key.length > 0;
@@ -138,6 +151,7 @@ export default function MapWidget({
     });
       mapRef.current = map as GoogleMapInstance;
 
+      const rot = calibratedRotation(heading ?? null);
       const icon = {
         path: g.SymbolPath.FORWARD_CLOSED_ARROW,
         scale: 5,
@@ -145,7 +159,8 @@ export default function MapWidget({
         fillOpacity: 1,
         strokeColor: "#fff",
         strokeWeight: 2,
-        rotation: heading ?? 0,
+        rotation: rot,
+        anchor: new g.Point(0, 2),
       };
       const marker = new g.Marker({
         position: center,
@@ -196,16 +211,18 @@ export default function MapWidget({
 
     if (markerRef.current) {
       markerRef.current.setPosition(center);
-      const rotation = heading != null ? heading : 0;
-      markerRef.current.setIcon({
+      const rot = calibratedRotation(heading);
+      const newIcon = {
         path: g.SymbolPath.FORWARD_CLOSED_ARROW,
         scale: 5,
         fillColor: "#ea4335",
         fillOpacity: 1,
         strokeColor: "#fff",
         strokeWeight: 2,
-        rotation,
-      });
+        rotation: rot,
+        anchor: new g.Point(0, 2),
+      };
+      markerRef.current.setIcon(newIcon);
       if (isDev) console.debug("[map] marker updated");
     }
 
@@ -226,7 +243,9 @@ export default function MapWidget({
       });
       circleRef.current = circle as GoogleCircleInstance;
     }
-  }, [lat, lon, heading, accuracy]);
+    // calibratedRotation is stable given rotOffset/rotInvert which are in deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lat, lon, heading, accuracy, rotOffset, rotInvert]);
 
   const authFailed = diag.authFailureAt != null;
   const scriptError = diag.scriptError != null;
