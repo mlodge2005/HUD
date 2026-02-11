@@ -1,13 +1,75 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useMapsDiagnostics } from "./MapsDiagnosticsContext";
 
-const HAS_GOOGLE_MAPS = typeof process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY === "string" &&
-  process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY.length > 0;
+const MAPS_SCRIPT_BASE = "https://maps.googleapis.com/maps/api/js";
+const CALLBACK_NAME = "__hudMapsLoaded";
+
+declare global {
+  interface Window {
+    [CALLBACK_NAME]?: () => void;
+    gm_authFailure?: () => void;
+  }
+}
 
 export default function MapWidget() {
+  const { state: diag, setDiagnostics } = useMapsDiagnostics();
   const [lat, setLat] = useState<number | null>(null);
   const [lon, setLon] = useState<number | null>(null);
+  const scriptLoadedRef = useRef(false);
+
+  const key =
+    typeof process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY === "string"
+      ? process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+      : "";
+  const keySet = key.length > 0;
+  const keyLength = key.length;
+
+  useEffect(() => {
+    setDiagnostics({ keySet, keyLength });
+  }, [keySet, keyLength, setDiagnostics]);
+
+  useEffect(() => {
+    if (!keySet || scriptLoadedRef.current) return;
+
+    window.gm_authFailure = () => {
+      if (typeof console !== "undefined" && console.error) {
+        console.error("[maps] gm_authFailure: API key rejected (billing/referrer/API not enabled)");
+      }
+      setDiagnostics({ authFailureAt: Date.now() });
+    };
+
+    window[CALLBACK_NAME] = () => {
+      scriptLoadedRef.current = true;
+      setDiagnostics({ googleMapsLoaded: true, scriptError: null });
+    };
+
+    const script = document.createElement("script");
+    script.async = true;
+    script.defer = true;
+    script.src = `${MAPS_SCRIPT_BASE}?key=${encodeURIComponent(key)}&callback=${CALLBACK_NAME}`;
+    script.onload = () => {
+      if (typeof (window as unknown as { google?: { maps?: unknown } }).google?.maps === "undefined") {
+        if (typeof console !== "undefined" && console.error) {
+          console.error("[maps] Script loaded but window.google.maps not defined");
+        }
+        setDiagnostics({ scriptError: "window.google.maps not defined" });
+      }
+    };
+    script.onerror = () => {
+      if (typeof console !== "undefined" && console.error) {
+        console.error("[maps] Maps script failed to load (network or CORS)");
+      }
+      setDiagnostics({ scriptError: "Script failed to load" });
+    };
+    document.head.appendChild(script);
+
+    return () => {
+      window.gm_authFailure = undefined;
+      window[CALLBACK_NAME] = undefined;
+    };
+  }, [keySet, key, setDiagnostics]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -24,10 +86,30 @@ export default function MapWidget() {
     return () => clearInterval(interval);
   }, []);
 
-  if (!HAS_GOOGLE_MAPS) {
+  const authFailed = diag.authFailureAt != null;
+  const scriptError = diag.scriptError != null;
+  const showErrorBanner = !keySet || authFailed || scriptError;
+
+  const errorMessage = !keySet
+    ? "Maps API key not set (NEXT_PUBLIC_GOOGLE_MAPS_API_KEY)."
+    : authFailed
+      ? "Maps API key rejected (auth failure)."
+      : scriptError
+        ? `Maps script error: ${diag.scriptError}`
+        : null;
+
+  if (showErrorBanner && errorMessage) {
+    if (typeof console !== "undefined" && console.error) {
+      console.error("[maps] Map unavailable:", errorMessage);
+    }
     return (
-      <div className="bg-black/60 text-white rounded-lg p-3 h-full flex items-center justify-center text-sm">
-        Data Unavailable
+      <div className="bg-red-900/90 text-white rounded-lg p-3 h-full flex flex-col gap-2 text-sm">
+        <p className="font-medium">Map unavailable</p>
+        <p className="text-red-200">{errorMessage}</p>
+        <p className="text-xs text-red-300">
+          Check Billing + Maps JavaScript API enabled + HTTP referrer restrictions for
+          localhost/vercel.
+        </p>
       </div>
     );
   }
@@ -40,7 +122,7 @@ export default function MapWidget() {
     );
   }
 
-  const src = `https://www.google.com/maps/embed/v1/view?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&center=${lat},${lon}&zoom=15`;
+  const src = `https://www.google.com/maps/embed/v1/view?key=${encodeURIComponent(key)}&center=${lat},${lon}&zoom=15`;
   return (
     <div className="bg-black/60 rounded-lg overflow-hidden h-full w-full">
       <iframe

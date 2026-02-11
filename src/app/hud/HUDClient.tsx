@@ -10,6 +10,8 @@ import CalendarWidget from "./widgets/CalendarWidget";
 import LocalInfoWidget from "./widgets/LocalInfoWidget";
 import MapWidget from "./widgets/MapWidget";
 import ChatWidget from "./widgets/ChatWidget";
+import { MapsDiagnosticsProvider } from "./widgets/MapsDiagnosticsContext";
+import { MapsDiagnosticsPanel } from "./widgets/MapsDiagnosticsPanel";
 import {
   encodeRTMessage,
   type RTMessage,
@@ -211,8 +213,9 @@ export default function HUDClient({ user }: { user: AuthUser }) {
   }, [publishData]);
 
   return (
-    <div className="fixed inset-0 bg-black overflow-hidden">
-      <HUDVideo
+    <MapsDiagnosticsProvider>
+      <div className="fixed inset-0 bg-black overflow-hidden">
+        <HUDVideo
         isStreamer={isStreamer}
         userId={user.id}
         displayName={user.displayName}
@@ -260,6 +263,7 @@ export default function HUDClient({ user }: { user: AuthUser }) {
       <div className="absolute bottom-4 right-4 z-20 w-64 h-48">
         <MapWidget />
       </div>
+      <MapsDiagnosticsPanel />
       <div className="absolute bottom-4 left-4 z-20 w-80 max-h-64">
         <ChatWidget user={user} />
       </div>
@@ -330,6 +334,7 @@ export default function HUDClient({ user }: { user: AuthUser }) {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </MapsDiagnosticsProvider>
   );
 }
